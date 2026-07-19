@@ -177,6 +177,13 @@
   #studioPage #cvscroll.analysisZoomSmall .analysisEditorLabelBg{opacity:.82}
 
   /* --- Plumbline homepage + editor navigation --- */
+  /* Phase 1: the three screens now sit inside <main id="outlet">, so the
+     outlet must take over the flex role body used to provide for them. */
+  #outlet{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+  .appNav{flex:0 0 auto}
+  .pageNav a[data-route]{padding:6px 10px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:13px;border:1px solid transparent}
+  .pageNav a[data-route]:hover{border-color:var(--line)}
+  .pageNav a[data-route].active{background:var(--plumb);border-color:var(--plumb);color:#fff}
   .plPage{display:none;height:100vh;min-height:0;overflow:hidden;flex:1 1 auto}
   .plPage.active{display:flex;flex-direction:column}
   .homeShell{min-height:100vh;overflow:auto;background:linear-gradient(135deg,#fffdf7 0%,#f5f2ea 52%,#e7f3ef 100%);padding:28px;color:var(--ink)}

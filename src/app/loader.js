@@ -1,5 +1,9 @@
 
     (function(){
+      /* Phase 1: this file no longer routes. The router owns which screen is
+         shown; loader.js is reduced to what only it can do - decoding the
+         base64 editor document into a blob URL for the iframe, and relaying
+         the two messages the editor document sends to its parent. */
       var editorLoaded = false;
       function loadEditor(){
         if(editorLoaded) return;
@@ -21,28 +25,16 @@
           frame.srcdoc = '<!doctype html><meta charset="utf-8"><body style="font:14px system-ui;padding:24px;color:#16243B"><h1>Workflow Editor failed to load</h1><p>'+String(err && err.message || err)+'</p></body>';
         }
       }
-      function showPage(name){
-        if(!name) name='home';
-        ['home','editor','studio'].forEach(function(p){
-          var el = document.getElementById(p+'Page');
-          if(el) el.classList.toggle('active', p===name);
-        });
-        if(name==='editor') loadEditor();
-        if(name==='studio' && typeof window.plumblineRequestEditorSync === 'function'){
-          try{ window.plumblineRequestEditorSync({openAnalysis:true}); }catch(e){}
-        }
-        try{ localStorage.setItem('plumbline_page', name); }catch(e){}
-      }
-      document.addEventListener('click', function(e){
-        var t = e.target && e.target.closest ? e.target.closest('[data-page]') : null;
-        if(!t) return;
-        e.preventDefault();
-        showPage(t.getAttribute('data-page'));
-      });
       window.addEventListener('message', function(ev){
         var d = ev && ev.data;
         if(!d) return;
-        if(d.type === 'plumbline-nav' && d.page) { showPage(d.page); return; }
+        /* The editor document still sends {type:'plumbline-nav', page:'studio'}.
+           Translate to a route rather than teaching the editor about hashes. */
+        if(d.type === 'plumbline-nav' && d.page) {
+          var map = { home:'/home', editor:'/editor', studio:'/analysis' };
+          location.hash = '#' + (map[d.page] || '/home');
+          return;
+        }
         if(d.type !== 'plumbline-auth') return;
         setTimeout(function(){
           if (typeof window.plumblineShowAuth === 'function') { window.plumblineShowAuth(true); return; }
@@ -50,14 +42,13 @@
           if(b) b.click();
         }, 60);
       });
-      window.plumblineShowPage = showPage;
-      // Pre-load the Workflow Editor at startup so its active process is
-      // always available to the Analysis Studio, even when the Studio page
-      // is opened first (the editor pushes a snapshot after its first render).
+      /* Kept for the editor document, which may call it by name. */
+      window.plumblineShowPage = function(name){
+        var map = { home:'/home', editor:'/editor', studio:'/analysis' };
+        location.hash = '#' + (map[name] || '/home');
+      };
+      window.plumblineEnsureEditorLoaded = loadEditor;
+      /* Pre-load at startup so the editor's active process is available to the
+         Analysis screen even when the user never opens the Editor. */
       loadEditor();
-      // Always boot to the home page (shell.html's homePage container).
-      // The last-visited page is still saved by showPage() and available to
-      // any code that wants it, but it is no longer restored on startup.
-      showPage('home');
     })();
-  

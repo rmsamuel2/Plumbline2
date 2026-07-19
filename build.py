@@ -57,12 +57,33 @@ PARTS = [
     ("@@DATA_GATEWAY_JS@@",   "data/data-gateway.js",        "text"),
     ("@@LLM_GATEWAY_JS@@",    "llm/llm-gateway.js",          "text"),
     ("@@UI_MODULES_JS@@",     "app/ui-modules.gen.js",       "text"),
+    # Phase 1: the presentation layer is three routed screen modules over a
+    # shared core. Order is load-bearing only in that every module must be
+    # defined before ui-boot.js loads the router; __PL resolves lazily, so the
+    # modules themselves may be listed in any order.
+    ("@@SHARED_DOM_JS@@",       "app/modules/shared/dom.ts",        "text"),
+    ("@@SHARED_WORKSPACE_JS@@", "app/modules/shared/workspace.ts",  "text"),
+    ("@@SHARED_AUTH_JS@@",      "app/modules/shared/auth.ts",       "text"),
+    ("@@MODULE_EDITOR_JS@@",    "app/modules/editor/editor.ts",     "text"),
+    ("@@MODULE_ANALYSIS_JS@@",  "app/modules/analysis/analysis.ts", "text"),
+    ("@@MODULE_HOME_JS@@",      "app/modules/home/home.ts",         "text"),
+    ("@@ROUTER_JS@@",           "app/router.js",                    "text"),
     ("@@UI_BOOT_JS@@",        "app/ui-boot.js",              "text"),
     ("@@EDITOR_HTML_B64@@",   "editor/workflow-editor.html", "b64"),
     ("@@LOADER_JS@@",         "app/loader.js",               "text"),
 ]
 
 # facade globals that must survive into the built file (structural self-check)
+REQUIRED_MODULES = (
+    "studio/shared/dom.ts",
+    "studio/shared/workspace.ts",
+    "studio/shared/auth.ts",
+    "studio/modules/editor.ts",
+    "studio/modules/analysis.ts",
+    "studio/modules/home.ts",
+    "studio/router.ts",
+)
+
 REQUIRED_GLOBALS = (
     "window.PlumblineEngine",
     "window.PlumblineMonoid",
@@ -116,7 +137,14 @@ def check(html):
     for needle in REQUIRED_GLOBALS:
         if needle not in html:
             sys.exit("error: expected global missing from build: %s" % needle)
-    print("  check: OK — all layers inlined, facades present, no stray markers")
+    for mod in REQUIRED_MODULES:
+        if ('__PL.define("%s"' % mod) not in html:
+            sys.exit("error: expected module missing from build: %s" % mod)
+    if '__PL.define("studio/main.ts"' in html:
+        sys.exit("error: studio/main.ts is still present — it was split into "
+                 "app/modules/ in Phase 1 and must not be rebuilt into the bundle")
+    print("  check: OK — all layers inlined, facades present, "
+          "7 presentation modules registered, no stray markers")
 
 
 def main():

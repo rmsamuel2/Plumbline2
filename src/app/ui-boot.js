@@ -1,17 +1,31 @@
 /* ============================================================================
  * Plumbline — Presentation boot
  * ----------------------------------------------------------------------------
- * Registers the presentation modules (render + app + studio UI, see
- * ui-modules.gen.js) and starts the Analysis Studio. By the time this runs,
- * engine.js has already published window.PlumblineEngine, data-gateway.js has
- * published window.PlumblineData, and llm-gateway.js has published
- * window.PlumblineLLM. The UI calls those facades; it contains no math.
+ * Phase 1. Previously this file ended with __PL.load("studio/main.ts"), which
+ * booted the whole UI as one module. It now:
+ *   1. wires the three facades (unchanged from before),
+ *   2. builds the ctx that every screen module receives,
+ *   3. initialises the two boot-time services (auth modal, editor bridge),
+ *   4. starts the router, which mounts the screen named by location.hash.
+ *
+ * Modules receive their dependencies through ctx and must not read
+ * window.PlumblineData / PlumblineLLM / PlumblineServices directly.
  * ==========================================================================*/
 (function () {
   if (!window.__PL) { throw new Error("Plumbline runtime missing (load order?)"); }
 
-  // Expose the three service facades to the UI module under stable globals so
-  // studio/main.ts and future UI code can reach them without importing math.
+  /* ---------------------------------------------------------------------
+   * WHY THIS IS DEFERRED
+   * shell.html inlines this script INSIDE <section id="studioPage">, which
+   * comes before #authModal and the editor payload. Running immediately means
+   * document.getElementById("authClose") - and every other node after this
+   * point - returns null, so auth.init()'s bindings silently do nothing and
+   * the login modal cannot be closed.
+   * The pre-split code had the same constraint and met it with
+   * DOMContentLoaded at the foot of studio/main.ts. Keep this guard.
+   * ------------------------------------------------------------------- */
+  function boot() {
+
   // Point the data gateway at the Plumbline API (the database's front door)
   // before anything in the UI can ask it for data. window.PLUMBLINE_API is set
   // by shell.html; autodetect() verifies reachability in the background.
@@ -32,12 +46,56 @@
     llm:    window.PlumblineLLM    || null
   };
 
+  /* A minimal pub/sub for crosscutting signals only (session-expired,
+   * api-unreachable). Screen-to-screen communication is the URL, and
+   * state-change notification is workspace.onChange - not this. */
+  var bus = (function () {
+    var m = {};
+    return {
+      on:   function (k, f) { (m[k] || (m[k] = [])).push(f); },
+      off:  function (k, f) { m[k] = (m[k] || []).filter(function (g) { return g !== f; }); },
+      emit: function (k, v) { (m[k] || []).forEach(function (f) {
+              try { f(v); } catch (e) { console.error("bus '" + k + "' handler failed", e); } }); }
+    };
+  })();
+
   try {
-    window.__PL.load("studio/main.ts");   // boot the Studio UI
+    var auth = window.__PL.load("studio/shared/auth.ts");
+    var ws   = window.__PL.load("studio/shared/workspace.ts");
+    var ed   = window.__PL.load("studio/modules/editor.ts");
+
+    var ctx = {
+      data:      window.PlumblineData,
+      llm:       window.PlumblineLLM,
+      engine:    window.PlumblineEngine,   /* PHASE2: becomes the engine client */
+      workspace: ws,
+      auth:      auth,
+      bus:       bus
+    };
+
+    /* Boot-time services. Both install listeners that must exist regardless of
+     * which screen is showing:
+     *  - auth owns the modal, which is opened from Home, from the Studio
+     *    toolbar, and from the editor iframe by postMessage;
+     *  - the editor bridge must be listening before the pre-loaded iframe
+     *    pushes its first snapshot, or a user who goes straight to Analysis
+     *    never receives editor data. */
+    auth.init(ctx);
+    ed.init(ctx);
+
+    auth.restoreSession();
+
+    window.__PL.load("studio/router.ts").start(ctx);
   } catch (e) {
     var box = document.getElementById("err");
     if (box) { box.style.display = "block";
       box.textContent = "Studio failed to start: " + (e && e.message || e); }
     throw e;
   }
+  }
+
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", boot);
+  else
+    boot();
 })();

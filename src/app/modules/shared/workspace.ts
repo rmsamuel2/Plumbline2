@@ -57,6 +57,7 @@ exports.onPushToEditor   = function (fn) { return register("pushToEditor", fn); 
  * that declaration is moved below verbatim. */
 
 
+
 /* main.ts:8-8 */
 const ROLES = ["step", "quality", "hold", "decision", "rework", "terminal"];
 
@@ -119,7 +120,7 @@ let sel = null;
 /* main.ts:48-48 */
 function emptyOverlay() { return { bands: [], flag: {}, edge: {}, ghosts: [], stageTag: {} }; }
 
-/* main.ts:53-70 */  /* HOOK: see PHASE1_ASSIGNMENT.md */
+/* main.ts:53-70 */
 function estimate(d) {
     var _a;
     for (const s of d.wf.states) {
@@ -139,7 +140,7 @@ function estimate(d) {
         d.branch[t.from + "::" + t.on] = +(1 / (deg[t.from] || 1)).toFixed(3);
 }
 
-/* main.ts:71-77 */  /* HOOK: see PHASE1_ASSIGNMENT.md */
+/* main.ts:71-77 */
 function mkDoc(wf) {
     const d = { id: wf.id + "_" + Math.random().toString(36).slice(2, 6), name: wf.name, wf: dom_1.clone(wf), pos: {}, cost: {}, time: {}, branch: {}, owner: {}, stage: {},
         sugs: {}, toolIds: [[], [], [], [], [], []], applied: new Set(), overruled: new Set(), overlay: emptyOverlay() };
@@ -398,7 +399,7 @@ function effective(d) { const out = []; for (const ids of d.toolIds)
             out.push(d.sugs[id]);
     } return out; }
 
-/* main.ts:500-509 */  /* HOOK: see PHASE1_ASSIGNMENT.md */
+/* main.ts:500-509 */
 function rebuild(d) {
     // recompute layout-affecting suggestions cleanly. Editor-sourced graphs keep exact editor positions.
     const keepEditorPos = hasEditorCanvas(d) ? dom_1.clone(d.pos) : null;
@@ -705,7 +706,7 @@ function studioStateTypeForRole(st) {
     return "NORMAL";
 }
 
-/* main.ts:1690-1813 */  /* HOOK: see PHASE1_ASSIGNMENT.md */
+/* main.ts:1690-1813 */
 function studioDocToEditorData(d) {
     if (!d || !d.editorData || !isEditorData(d.editorData))
         return null;
@@ -895,6 +896,7 @@ function commit() {
  * so there is exactly one docs[]/active in the application.
  * -------------------------------------------------------------------------*/
 exports.getDocs      = function () { return docs; };
+exports.setDocs      = function (a) { docs = a; };   /* init() resets the list */
 exports.getActive    = function () { return active; };
 exports.setActive    = function (i) { active = i; };
 exports.getSel       = function () { return sel; };
@@ -962,4 +964,5 @@ exports["persist"] = persist;
 exports["restoreState"] = restoreState;
 exports["commit"] = commit;
 
-});
+}, {"@plumbline/io":"packages/io/src/index.ts"});
+

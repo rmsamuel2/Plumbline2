@@ -3,7 +3,17 @@
 <title>Plumbline Studio</title>
 <style>@@STUDIO_CSS@@</style></head>
 <body>
-  <main id="homePage" class="plPage active" aria-label="Plumbline home">
+  <nav class="pageNav appNav">
+    <div class="wm">plum<b>b</b>line</div>
+    <span class="navNote">Plumbline Studio</span>
+    <span class="spacer"></span>
+    <a href="#/home" data-route>Home</a>
+    <a href="#/editor" data-route>Editor</a>
+    <a href="#/analysis" data-route>Analysis</a>
+    <span class="userbadge navUserBadge">not signed in</span>
+  </nav>
+  <main id="outlet">
+  <section id="homePage" class="plPage active" aria-label="Plumbline home">
     <div class="homeShell">
       <div class="homeTop">
         <div class="homeBrand"><div class="wm">plum<b>b</b>line</div><div class="tag">true by measure</div></div>
@@ -18,8 +28,8 @@
           <h1>Build the workflow first. Then measure it.</h1>
           <p>Start in the workflow editor to build the process, then move into Analysis Studio for the six Plumbline tools, saved workflows, demographics, and history.</p>
           <div class="homeActions">
-            <button class="btn big" data-page="editor">Open Workflow Editor</button>
-            <button class="btn dark" data-page="studio">Open Analysis Studio</button>
+            <button class="btn big" id="btnOpenEditor">Open Workflow Editor</button>
+            <button class="btn dark" id="btnOpenStudio">Open Analysis Studio</button>
           </div>
         </div>
         <div class="homeSide">
@@ -30,14 +40,14 @@
         </div>
       </section>
     </div>
-  </main>
+  </section>
   <section id="editorPage" class="plPage" aria-label="Workflow Editor page">
     <div class="pageNav">
       <div class="wm">plum<b>b</b>line</div>
       <span class="navNote">Workflow Editor</span>
       <span class="spacer"></span>
-      <button class="btn ghost" data-page="home">Home</button>
-      <button class="btn ghost" data-page="studio" title="Analyze the current Workflow Editor process">Analysis Studio</button>
+      <a class="btn ghost" href="#/home">Home</a>
+      <a class="btn ghost" href="#/analysis" title="Analyze the current Workflow Editor process">Analysis Studio</a>
       <span class="userbadge navUserBadge">not signed in</span>
     </div>
     <iframe id="workflowEditorFrame" title="Workflow Editor"></iframe>
@@ -47,8 +57,8 @@
       <div class="wm">plum<b>b</b>line</div>
       <span class="navNote">Analysis Studio</span>
       <span class="spacer"></span>
-      <button class="btn ghost" data-page="home">Home</button>
-      <button class="btn ghost" data-page="editor">Workflow Editor</button>
+      <a class="btn ghost" href="#/home">Home</a>
+      <a class="btn ghost" href="#/editor">Workflow Editor</a>
       <span class="userbadge navUserBadge">not signed in</span>
     </div>
 
@@ -124,9 +134,17 @@
   <script>@@DATA_GATEWAY_JS@@</script>
   <script>@@LLM_GATEWAY_JS@@</script>
   <script>@@UI_MODULES_JS@@</script>
+  <script>@@SHARED_DOM_JS@@</script>
+  <script>@@SHARED_WORKSPACE_JS@@</script>
+  <script>@@SHARED_AUTH_JS@@</script>
+  <script>@@MODULE_EDITOR_JS@@</script>
+  <script>@@MODULE_ANALYSIS_JS@@</script>
+  <script>@@MODULE_HOME_JS@@</script>
+  <script>@@ROUTER_JS@@</script>
   <script>@@UI_BOOT_JS@@</script>
 
   </section>
+  </main>
   <div id="authModal" class="modal" style="display:none">
     <div class="modalbox">
       <button class="modalclose" id="authClose" title="close">×</button>
