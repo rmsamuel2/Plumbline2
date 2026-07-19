@@ -48,6 +48,27 @@ foreach ($candidate in @('python', 'py')) {
 if (-not $py) { throw 'Python 3.6+ is required for the build — install from https://python.org and re-run.' }
 Write-Host ('Prerequisites OK  (node ' + (node --version) + ', ' + (& $py --version) + ')') -ForegroundColor Green
 
+# ---- 1b. filesystem sanity --------------------------------------------------
+# node_modules needs a real local filesystem. Google Drive and OneDrive virtual
+# filesystems corrupt npm extraction (TAR_ENTRY_ERROR, then
+# ERR_INVALID_PACKAGE_CONFIG naming a different package each run). Pausing sync
+# does not help. Probe with a junction, which those drivers refuse.
+$probeTarget = Join-Path $env:TEMP ('pl-fsprobe-' + [guid]::NewGuid().ToString('N'))
+$probeLink   = Join-Path $root    ('.pl-fsprobe-' + [guid]::NewGuid().ToString('N'))
+$fsOk = $false
+try {
+    New-Item -ItemType Directory -Force -Path $probeTarget | Out-Null
+    New-Item -ItemType Junction -Path $probeLink -Target $probeTarget -ErrorAction Stop | Out-Null
+    $fsOk = $true
+} catch { $fsOk = $false } finally {
+    if (Test-Path $probeLink) { try { [System.IO.Directory]::Delete($probeLink, $false) } catch { } }
+    if (Test-Path $probeTarget) { Remove-Item $probeTarget -Recurse -Force -ErrorAction SilentlyContinue }
+}
+if (-not $fsOk) {
+    throw ('This folder cannot host node_modules: ' + $root + ' - it is on a virtual or synced filesystem (Google Drive, OneDrive, network share). Clone to a local disk such as C:\dev\Plumbline2 and run from there.')
+}
+Write-Host 'Filesystem OK (supports node_modules)' -ForegroundColor Green
+
 # ---- 2. server\.env ---------------------------------------------------------
 $envFile = Join-Path $root 'server\.env'
 if (-not (Test-Path $envFile)) {
@@ -74,7 +95,9 @@ if (-not (Test-Path (Join-Path $root 'server\node_modules'))) {
     Write-Host 'Installing server dependencies (npm install)...' -ForegroundColor Cyan
     Push-Location (Join-Path $root 'server')
     npm install
+    $npmExit = $LASTEXITCODE
     Pop-Location
+    if ($npmExit -ne 0) { throw 'npm install FAILED - see the output above. A partial node_modules will fail in confusing ways.' }
 } else {
     Write-Host 'Server dependencies already installed.' -ForegroundColor Green
 }
@@ -83,7 +106,9 @@ if (-not (Test-Path (Join-Path $root 'server\node_modules'))) {
 Write-Host 'Applying database migrations (001 base, 002 production schema, 003 security patch)...' -ForegroundColor Cyan
 Push-Location (Join-Path $root 'server')
 npm run migrate
+$migrateExit = $LASTEXITCODE
 Pop-Location
+if ($migrateExit -ne 0) { throw 'Database migration FAILED - see the output above. The schema has NOT been applied.' }
 Write-Host 'Database is ready.' -ForegroundColor Green
 
 # ---- 5. build the single-file app -------------------------------------------
