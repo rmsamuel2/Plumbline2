@@ -6,7 +6,8 @@ REM  then opens Microsoft Edge at the app URL.
 REM ============================================================
 
 setlocal
-set "SERVER_DIR=C:\dev\plumbline5\server"
+#set "SERVER_DIR=C:\dev\plumbline5\server"
+set "SERVER_DIR=%~dp0server"
 set "URL=http://localhost:8080"
 set "PORT=8080"
 
