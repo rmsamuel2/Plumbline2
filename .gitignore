@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+*.orig
+*.log
+.DS_Store
+Thumbs.db
+~$*
+
+# build output
+dist/
+
+# Word working notes (repo root only)
+/*.docx

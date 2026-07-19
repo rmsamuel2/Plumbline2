@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plumbline Studio</title>
+<style>@@STUDIO_CSS@@</style></head>
+<body>
+  <main id="homePage" class="plPage active" aria-label="Plumbline home">
+    <div class="homeShell">
+      <div class="homeTop">
+        <div class="homeBrand"><div class="wm">plum<b>b</b>line</div><div class="tag">true by measure</div></div>
+        <div class="homeAuthButtons">
+          <button class="btn ghost" id="homeLogin">Login</button>
+          <button class="btn ghost" id="homeGuest" title="Guest access is coming soon">Login as Guest</button>
+          <button class="btn ghost" id="homeMaintenance" style="display:none" title="Superuser maintenance is coming soon">Maintenance</button>
+        </div>
+      </div>
+      <section class="homeHero">
+        <div class="homeCard">
+          <h1>Build the workflow first. Then measure it.</h1>
+          <p>Start in the workflow editor to build the process, then move into Analysis Studio for the six Plumbline tools, saved workflows, demographics, and history.</p>
+          <div class="homeActions">
+            <button class="btn big" data-page="editor">Open Workflow Editor</button>
+            <button class="btn dark" data-page="studio">Open Analysis Studio</button>
+          </div>
+        </div>
+        <div class="homeSide">
+          <!-- NOTATION (Prompt1): the language/copy of this card needs to be edited. -->
+          <div class="miniCard"><h3>Workflow Editor <span class="copyNote" title="Per Prompt1: the language of this card needs to be edited">copy to be edited</span></h3><p>Use the free-form Plumbline editor for categories, named boxes, connections, time per step, cost metadata, cloud SQL setup, JSON import/export, and PNG export.</p></div>
+          <!-- NOTATION (Prompt1): the language/copy of this card needs to be edited. -->
+          <div class="miniCard"><h3>Analysis Studio <span class="copyNote" title="Per Prompt1: the language of this card needs to be edited">copy to be edited</span></h3><p>Open the Plumbline workspace for the six improvement tools, illustrative cost/time views, saved workflows, demographics, and history.</p></div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <section id="editorPage" class="plPage" aria-label="Workflow Editor page">
+    <div class="pageNav">
+      <div class="wm">plum<b>b</b>line</div>
+      <span class="navNote">Workflow Editor</span>
+      <span class="spacer"></span>
+      <button class="btn ghost" data-page="home">Home</button>
+      <button class="btn ghost" data-page="studio" title="Analyze the current Workflow Editor process">Analysis Studio</button>
+      <span class="userbadge navUserBadge">not signed in</span>
+    </div>
+    <iframe id="workflowEditorFrame" title="Workflow Editor"></iframe>
+  </section>
+  <section id="studioPage" class="plPage" aria-label="Plumbline Studio page">
+    <div class="pageNav">
+      <div class="wm">plum<b>b</b>line</div>
+      <span class="navNote">Analysis Studio</span>
+      <span class="spacer"></span>
+      <button class="btn ghost" data-page="home">Home</button>
+      <button class="btn ghost" data-page="editor">Workflow Editor</button>
+      <span class="userbadge navUserBadge">not signed in</span>
+    </div>
+
+  <div id="err" style="display:none;background:#B2453C;color:#fff;padding:8px 14px;font:13px monospace"></div>
+  <header><div class="wm">plum<b>b</b>line</div><div class="sub">Analysis Studio — current editor workflow and combined Σ value</div><div id="analysisHudDock" class="hudDock"></div><div class="eyebrow">true by measure</div></header>
+  <div class="topbar">
+    <div id="wfbar"></div>
+    <span class="sep"></span>
+    <button class="btn ghost" id="btnNew">New</button>
+    <button class="btn ghost" id="btnAdd">Add</button>
+    <select id="exampleSel" class="exsel" title="Add an example workflow"><option value="">Add example…</option><option value="aml">AML / KYC</option><option value="data">Data Pipeline</option><option value="carf">CARF Reporting</option><option value="fmv">FMV Pricing</option><option value="change">Change Mgmt</option></select>
+    <button class="btn ghost" id="btnFill">Fill (illustrative)</button>
+    <button class="btn ghost" id="btnEstimate" title="fill every tile with reasonable, illustrative figures">Add fictitious cost/time</button>
+    <label class="file">Upload<input type="file" id="fileWf" accept="application/json,.json"></label>
+    <button class="btn ghost" id="btnDownload">Download</button>
+    <button class="btn ghost" id="btnSaveWorkflow">Save workflow</button>
+    <button class="btn ghost" id="btnSavedWorkflows">Saved workflows</button>
+    <button class="btn primary" id="btnAll">Apply all improvements</button>
+  </div>
+  <div id="app">
+    <section class="stage">
+      <div id="canvastools">
+        <span class="ctlabel">Drag onto canvas</span>
+        <span id="palette" class="palette"></span>
+        <span class="ctsep"></span>
+        <button class="ctbtn" id="ctAddTrans">&#8594; Connect mode</button>
+        <button class="ctbtn" id="ctDelete">&#215; Delete</button>
+        <button class="ctbtn" id="btnAddState" title="add a state in the centre">+ State</button>
+        <button class="ctbtn" id="btnTidy" title="re-arrange the tiles neatly">Re-arrange</button>
+        <span class="cthint" id="cthint">Drag a chip onto the canvas to add a state &middot; drag the teal dot from one state to another to connect &middot; drag a node to move it</span>
+      </div>
+      <div id="cvscroll"><div id="cv"></div><div id="sigma"></div><div id="empty"></div></div>
+    </section>
+    <div class="rightPanelHandle" id="rightPanelHandle"><button id="rightToggle" class="rightToggle" type="button" aria-expanded="true" aria-controls="right" title="Hide the analysis panel">&gt;</button></div>
+    <section class="right" id="right">
+      <div class="pane" id="pane_tools" style="display:none"><div id="tools"></div></div>
+      <div class="pane" id="pane_table" style="display:none"><div id="inspector"></div><div id="editor"></div><div id="status" class="status ok">✓ Ready.</div></div>
+      <div class="pane" id="pane_json" style="display:none"><p class="hint">One document: <b>workflow</b> + <b>cost</b> + <b>time</b>. Roles: step, quality, hold, decision, rework, terminal. Mark one state <code>"initial": true</code>; terminals take <code>"accept"</code> or <code>"reject"</code>. Edit the starter below, then <b>Load JSON</b>.</p><textarea id="json" spellcheck="false"></textarea><div style="margin-top:8px"><button class="btn" id="btnLoadJson">Load JSON</button></div></div>
+      <div class="pane" id="pane_analysis"><p class="hint">The certifying engine — findings are proven or refuted.</p><iframe id="results" title="Analysis"></iframe></div>
+    </section>
+  </div>
+    <script>
+    /* Plumbline is database-backed. Point the app at the Plumbline API
+       (server/ -> PostgreSQL/Supabase). Same-origin by default; set an
+       absolute URL when the page is opened from disk or another host. */
+    if (!window.PLUMBLINE_API)
+      window.PLUMBLINE_API = (location.protocol === "http:" || location.protocol === "https:")
+        ? location.origin                 /* served page: same-origin API */
+        : "http://localhost:8080";        /* opened from disk: local API */
+  </script>
+  <div id="toolbar">
+    <button class="tool" data-tool="0"><b>1.</b> Zoom out</button>
+    <button class="tool" data-tool="1"><b>2.</b> Spot duplicates</button>
+    <button class="tool" data-tool="2"><b>3.</b> Plan vs. reality</button>
+    <button class="tool" data-tool="3"><b>4.</b> Move the decision</button>
+    <button class="tool" data-tool="4"><b>5.</b> Run in parallel</button>
+    <button class="tool" data-tool="5"><b>6.</b> Find the loops</button>
+  </div>
+  <!-- ===== Plumbline layered runtime (order matters) =====================
+       1) runtime        shared module registry (window.__PL)
+       2) engine mods    the encapsulated math (io/core/cost/lemma)
+       3) engine facade  window.PlumblineEngine  (the ONLY math boundary)
+       3b) monoid       window.PlumblineMonoid   (true monoid-based math)
+       4) data gateway   window.PlumblineData     (DB interaction layer)
+       5) llm gateway    window.PlumblineLLM      (LLM interaction layer)
+       6) ui modules     presentation (render/app/studio) — NO math
+       7) ui boot        starts the Studio, wiring the facades
+       ================================================================= -->
+  <script>@@RUNTIME_JS@@</script>
+  <script>@@ENGINE_MODULES_JS@@</script>
+  <script>@@ENGINE_FACADE_JS@@</script>
+  <script>@@MONOID_JS@@</script>
+  <script>@@DATA_GATEWAY_JS@@</script>
+  <script>@@LLM_GATEWAY_JS@@</script>
+  <script>@@UI_MODULES_JS@@</script>
+  <script>@@UI_BOOT_JS@@</script>
+
+  </section>
+  <div id="authModal" class="modal" style="display:none">
+    <div class="modalbox">
+      <button class="modalclose" id="authClose" title="close">×</button>
+      <h2 id="authTitle">Sign in or create user</h2>
+      <div id="authStatus" class="authstatus"></div>
+      <div class="authgrid">
+        <label>Username / email<input id="authUser" autocomplete="username" placeholder="max@example.com"></label>
+        <label>Password<input id="authPass" type="password" autocomplete="current-password" placeholder="password"></label>
+      </div>
+      <div class="authactions">
+        <button class="btn" id="btnSignIn">Sign in</button>
+        <button class="btn ghost" id="btnCreateUser">Create user</button>
+        <button class="btn ghost" id="btnSignOut">Sign out</button>
+        <label class="authremember"><input type="checkbox" id="authRemember" checked> remember me on this device (secure token, revoked on password change)</label>
+      </div>
+      <h3>Demographics</h3>
+      <div class="authgrid">
+        <label>Name<input id="prof_displayName" placeholder="Display name"></label>
+        <label>Email<input id="prof_email" placeholder="Email"></label>
+        <label>Team / org<input id="prof_team" placeholder="Team or organization"></label>
+        <label>Role<input id="prof_role" placeholder="Role"></label>
+        <label>Region<input id="prof_region" placeholder="Region"></label>
+      </div>
+      <div class="authactions"><button class="btn ghost" id="btnUpdateProfile">Update demographics</button></div>
+      <div id="authPwChange" style="display:none">
+        <h3>Change password</h3>
+        <div class="authgrid">
+          <label>Current password<input id="authPwCurrent" type="password" autocomplete="current-password"></label>
+          <label>New password (min 8)<input id="authPwNew" type="password" autocomplete="new-password"></label>
+        </div>
+        <div class="authactions"><button class="btn ghost" id="btnChangePw">Change password</button></div>
+      </div>
+      <div class="authcols">
+        <div><h3>Saved workflows</h3><div id="savedList" class="scrollbox"></div></div>
+        <div><h3>On-line history</h3><div id="historyList" class="scrollbox"></div></div>
+      </div>
+    </div>
+  </div>
+  <script type="application/json" id="workflowEditorHtmlB64">@@EDITOR_HTML_B64@@</script>
+  <script>@@LOADER_JS@@</script>
+</body></html>
