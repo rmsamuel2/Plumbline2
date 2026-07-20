@@ -63,6 +63,8 @@
     var auth = window.__PL.load("studio/shared/auth.ts");
     var ws   = window.__PL.load("studio/shared/workspace.ts");
     var ed   = window.__PL.load("studio/modules/editor.ts");
+    var lib  = window.__PL.load("studio/shared/library.ts");
+    var lib  = window.__PL.load("studio/shared/library.ts");
 
     var ctx = {
       data:      window.PlumblineData,
@@ -70,6 +72,8 @@
       engine:    window.PlumblineEngine,   /* PHASE2: becomes the engine client */
       workspace: ws,
       auth:      auth,
+      library:   lib,
+      library:   lib,
       bus:       bus
     };
 
@@ -82,6 +86,10 @@
      *    never receives editor data. */
     auth.init(ctx);
     ed.init(ctx);
+    lib.init(ctx);
+    /* after auth (the library needs a session) and before the router (a screen
+       may open it during its own mount). */
+    lib.init(ctx);
 
     auth.restoreSession();
 

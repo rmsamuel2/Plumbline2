@@ -50,6 +50,8 @@
       <a class="btn ghost" href="#/analysis" title="Analyze the current Workflow Editor process">Analysis Studio</a>
       <span class="userbadge navUserBadge">not signed in</span>
     </div>
+    <div id="editorWfbar" class="wfbar editorWfbar"></div>
+    <div id="editorWfbar" class="wfbar editorWfbar"></div>
     <iframe id="workflowEditorFrame" title="Workflow Editor"></iframe>
   </section>
   <section id="studioPage" class="plPage" aria-label="Plumbline Studio page">
@@ -73,6 +75,8 @@
     <button class="btn ghost" id="btnFill">Fill (illustrative)</button>
     <button class="btn ghost" id="btnEstimate" title="fill every tile with reasonable, illustrative figures">Add fictitious cost/time</button>
     <label class="file">Upload<input type="file" id="fileWf" accept="application/json,.json"></label>
+    <button class="btn ghost" id="btnReadSaveStudio" title="Open the workflow library">Read/Save</button>
+    <button class="btn ghost" id="btnReadSaveStudio">Read/Save</button>
     <button class="btn ghost" id="btnDownload">Download</button>
     <button class="btn ghost" id="btnSaveWorkflow">Save workflow</button>
     <button class="btn ghost" id="btnSavedWorkflows">Saved workflows</button>
@@ -137,6 +141,7 @@
   <script>@@SHARED_DOM_JS@@</script>
   <script>@@SHARED_WORKSPACE_JS@@</script>
   <script>@@SHARED_AUTH_JS@@</script>
+  <script>@@SHARED_LIBRARY_JS@@</script>
   <script>@@MODULE_EDITOR_JS@@</script>
   <script>@@MODULE_ANALYSIS_JS@@</script>
   <script>@@MODULE_HOME_JS@@</script>
@@ -145,6 +150,33 @@
 
   </section>
   </main>
+  <div id="libraryOverlay" class="libOverlay" style="display:none">
+    <aside id="librarySidebar" class="libPanel" role="dialog" aria-label="Workflow library">
+      <div class="libHead">
+        <span class="libTitle">Workflows</span>
+        <button class="btn ghost" id="libNewFolder" title="Create a folder">New folder</button>
+        <button class="btn ghost" id="libClose" aria-label="Close">&times;</button>
+      </div>
+      <input id="libSearch" type="text" placeholder="Find a workflow or folder" autocomplete="off">
+      <div id="libTree" class="libTree"></div>
+
+      <div class="libFoot">
+        <button class="btn primary" id="libOpen">Open</button>
+
+        <div class="libSaveBox">
+          <label class="libLbl" for="libSaveName">Save as</label>
+          <input id="libSaveName" type="text" placeholder="Workflow name">
+          <label class="libLbl" for="libSaveDesc">Description</label>
+          <input id="libSaveDesc" type="text" placeholder="What this is, or what changed">
+          <label class="libLbl" for="libSaveFolder">Into folder</label>
+          <select id="libSaveFolder"></select>
+          <label class="libAll"><input type="checkbox" id="libSaveAll"><span> Save all open workflows</span></label>
+          <button class="btn" id="libSave">Save</button>
+        </div>
+      </div>
+      <div id="libStatus" class="libStatus"></div>
+    </aside>
+  </div>
   <div id="authModal" class="modal" style="display:none">
     <div class="modalbox">
       <button class="modalclose" id="authClose" title="close">×</button>

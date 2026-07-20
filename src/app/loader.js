@@ -35,6 +35,13 @@
           location.hash = '#' + (map[d.page] || '/home');
           return;
         }
+        if(d.type === 'plumbline-library'){
+          /* The editor asked for the workflow library. editor.ts owns the
+             flush-then-open sequence; loader.js only relays. */
+          var m = window.__PL && window.__PL.load('studio/modules/editor.ts');
+          if (m && m.openLibraryFromEditor) m.openLibraryFromEditor();
+          return;
+        }
         if(d.type !== 'plumbline-auth') return;
         setTimeout(function(){
           if (typeof window.plumblineShowAuth === 'function') { window.plumblineShowAuth(true); return; }

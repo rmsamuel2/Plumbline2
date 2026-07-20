@@ -64,6 +64,8 @@ PARTS = [
     ("@@SHARED_DOM_JS@@",       "app/modules/shared/dom.ts",        "text"),
     ("@@SHARED_WORKSPACE_JS@@", "app/modules/shared/workspace.ts",  "text"),
     ("@@SHARED_AUTH_JS@@",      "app/modules/shared/auth.ts",       "text"),
+    ("@@SHARED_LIBRARY_JS@@",   "app/modules/shared/library.ts",    "text"),
+    ("@@SHARED_LIBRARY_JS@@",   "app/modules/shared/library.ts",    "text"),
     ("@@MODULE_EDITOR_JS@@",    "app/modules/editor/editor.ts",     "text"),
     ("@@MODULE_ANALYSIS_JS@@",  "app/modules/analysis/analysis.ts", "text"),
     ("@@MODULE_HOME_JS@@",      "app/modules/home/home.ts",         "text"),
@@ -78,6 +80,8 @@ REQUIRED_MODULES = (
     "studio/shared/dom.ts",
     "studio/shared/workspace.ts",
     "studio/shared/auth.ts",
+    "studio/shared/library.ts",
+    "studio/shared/library.ts",
     "studio/modules/editor.ts",
     "studio/modules/analysis.ts",
     "studio/modules/home.ts",
@@ -144,7 +148,7 @@ def check(html):
         sys.exit("error: studio/main.ts is still present — it was split into "
                  "app/modules/ in Phase 1 and must not be rebuilt into the bundle")
     print("  check: OK — all layers inlined, facades present, "
-          "7 presentation modules registered, no stray markers")
+          "%d presentation modules registered, no stray markers" % len(REQUIRED_MODULES))
 
 
 def main():

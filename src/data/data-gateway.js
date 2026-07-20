@@ -135,6 +135,24 @@ window.PlumblineData = (function () {
         { method: "PATCH", body: patch || {} });
     },
 
+    /* ---- the navigation pane (migration 004) ---------------------------------
+     * listGroupWorkflows(groupId) → every ACTIVE workflow in one folder, each
+     *   already carrying its snapshot, so opening a folder is one request
+     *   rather than one per workflow.
+     * setWorkflowLifecycle(id, 'ARCHIVED' | 'TRASHED' | 'ACTIVE')
+     * setWorkflowVisibility(id, 'SAMPLE' | 'PRIVATE')  — superuser only.    */
+    listGroupWorkflows: function (groupId) {
+      return api("/api/groups/" + encodeURIComponent(groupId) + "/workflows");
+    },
+    setWorkflowLifecycle: function (workflowId, lifecycle) {
+      return api("/api/workflows/" + encodeURIComponent(workflowId) + "/lifecycle",
+        { method: "POST", body: { lifecycle: lifecycle } });
+    },
+    setWorkflowVisibility: function (workflowId, visibility) {
+      return api("/api/workflows/" + encodeURIComponent(workflowId) + "/visibility",
+        { method: "POST", body: { visibility: visibility } });
+    },
+
     /* ---- analysis lineage ------------------------------------------------------ */
     startAnalysis: function (versionId, engineVersion) {
       return api("/api/v2/versions/" + encodeURIComponent(versionId) + "/analyses",

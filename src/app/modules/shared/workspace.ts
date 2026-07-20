@@ -49,6 +49,10 @@ function fire(kind, arg) {
   }
 }
 exports.onChange         = function (fn) { return register("change", fn); };
+/* Ask every mounted screen to re-render. Used when something outside the
+   workspace has changed the documents — the library loading a folder, for
+   instance — and the screens need to catch up. */
+exports.emitChange       = function (arg) { fire("change", arg); };
 exports.onRecomputeTools = function (fn) { return register("recomputeTools", fn); };
 exports.onPushToEditor   = function (fn) { return register("pushToEditor", fn); };
 
@@ -707,7 +711,225 @@ function studioStateTypeForRole(st) {
 }
 
 /* main.ts:1690-1813 */
+
+/* ---------------------------------------------------------------------------
+ * studioIRToEditorData(d)
+ *
+ * Build editor data for a document that has none.
+ *
+ * studioDocToEditorData() is an UPDATE function: it takes an editor-authored
+ * process and writes the Studio's changes back into it, and returns null when
+ * there is nothing to update. That is correct for its job, but it leaves the
+ * five Analysis Studio presets and the three engine fixtures unusable in the
+ * Workflow Editor — they are bare engine IR with no stages, no state_key and
+ * no editor structure at all, so the Editor received nothing and showed no
+ * transitions.
+ *
+ * This synthesises that structure from the IR, mirroring the conventions
+ * editorDataToUnified() uses in the other direction so a round trip is stable:
+ *   · state ids become state_key via editorKey()
+ *   · state_type comes from studioStateTypeForRole()
+ *   · one stage, because the editor requires every state to sit in one and
+ *     the IR has no notion of them
+ *   · each { from, on, to } becomes a transition row with a generated,
+ *     de-duplicated transition_key
+ * Cost and duration already held on the doc are carried across, so a preset
+ * opened in the Editor shows the same figures the Studio does.
+ * ------------------------------------------------------------------------- */
+function studioIRToEditorData(d) {
+  if (!d || !d.wf || !Array.isArray(d.wf.states) || !d.wf.states.length) return null;
+
+  const wf = d.wf;
+  const pkey = editorKey(wf.id, "workflow");
+
+  /* state id -> state_key, de-duplicated exactly as editorDataToUnified does */
+  const seen = new Set();
+  const keyFor = new Map();
+  wf.states.forEach(function (st, i) {
+    let k = editorKey(st.id, "S" + (i + 1));
+    const base = k;
+    let n = 2;
+    while (seen.has(k)) { k = base + "_" + (n++); }
+    seen.add(k);
+    keyFor.set(st.id, k);
+  });
+
+  /* -------------------------------------------------------------------------
+   * Stages.
+   *
+   * The IR has none, and the editor requires every state to sit in one. A
+   * single "All" lane is valid but renders as one long row and looks nothing
+   * like an editor-authored process.
+   *
+   * Two things in the IR are real and can carry the structure:
+   *   · role   — authored on every state (step / quality / decision / hold /
+   *              rework / terminal). This is what the Studio already colours by.
+   *   · depth  — breadth-first distance from the start state, i.e. the actual
+   *              topology.
+   *
+   * So: group by role, order the lanes by each role's mean depth, and name
+   * them from a fixed vocabulary. Nothing is invented — the grouping and the
+   * ordering both come from data that is already there. Descriptions and
+   * entry/exit actions are deliberately left empty rather than fabricated,
+   * so the difference between derived structure and authored detail stays
+   * visible.
+   * ---------------------------------------------------------------------- */
+  const ROLE_LANE = {
+    step:     { name: "Processing",      color: "#2563eb" },
+    quality:  { name: "Checks",          color: "#3A9D90" },
+    decision: { name: "Decisions",       color: "#9333ea" },
+    hold:     { name: "Holds",           color: "#7B8694" },
+    rework:   { name: "Exceptions",      color: "#B8862F" },
+    terminal: { name: "Closed Outcomes", color: "#2E7D32" }
+  };
+
+  /* breadth-first depth from the start state */
+  const outEdges = {};
+  (wf.transitions || []).forEach(function (t) {
+    (outEdges[t.from] = outEdges[t.from] || []).push(t.to);
+  });
+  const startId = wf.initial ||
+    ((wf.states.find(function (x) { return x.initial; }) || wf.states[0]).id);
+  const depth = {};
+  depth[startId] = 0;
+  const queue = [startId];
+  while (queue.length) {
+    const n = queue.shift();
+    (outEdges[n] || []).forEach(function (m) {
+      if (depth[m] === undefined) { depth[m] = depth[n] + 1; queue.push(m); }
+    });
+  }
+  const maxDepth = Math.max(0, ...Object.keys(depth).map(function (k) { return depth[k]; }));
+  const depthOf = function (id) {
+    /* unreachable states sort last, before the terminals */
+    return depth[id] === undefined ? maxDepth + 1 : depth[id];
+  };
+
+  /* one lane per role actually present, ordered by mean depth */
+  const laneOf = {};
+  wf.states.forEach(function (st) {
+    const r = String(st.role || "step").toLowerCase();
+    const key = ROLE_LANE[r] ? r : "step";
+    (laneOf[key] = laneOf[key] || []).push(st);
+  });
+  const laneKeys = Object.keys(laneOf).sort(function (a, b) {
+    /* terminals always last, whatever their depth */
+    if (a === "terminal") return 1;
+    if (b === "terminal") return -1;
+    const mean = function (k) {
+      const ds = laneOf[k].map(function (st) { return depthOf(st.id); });
+      return ds.reduce(function (x, y) { return x + y; }, 0) / ds.length;
+    };
+    return mean(a) - mean(b);
+  });
+  const stageKeyFor = {};
+  const stages = laneKeys.map(function (k, i) {
+    stageKeyFor[k] = k;
+    return {
+      process_key: pkey,
+      stage_key: k,
+      stage_order: i + 1,
+      name: ROLE_LANE[k].name,
+      owner_role: "",
+      description: "Derived from the workflow's own state roles and topology.",
+      visual_color: ROLE_LANE[k].color
+    };
+  });
+
+  const ordered = wf.states.slice().sort(function (a, b) {
+    return depthOf(a.id) - depthOf(b.id);
+  });
+  const withinLane = {};
+  const states = ordered.map(function (st) {
+    const key = keyFor.get(st.id);
+    const role = String(st.role || "step").toLowerCase();
+    const lane = ROLE_LANE[role] ? role : "step";
+    withinLane[lane] = (withinLane[lane] || 0) + 1;
+    const stage = stages.find(function (g) { return g.stage_key === lane; });
+    const cost = d.cost && typeof d.cost[st.id] === "number" ? d.cost[st.id] : 0;
+    const mins = d.time && typeof d.time[st.id] === "number" ? d.time[st.id] : null;
+    return {
+      process_key: pkey,
+      state_key: key,
+      stage_key: lane,
+      stage_name: stage ? stage.name : "Processing",
+      stage_order: stage ? stage.stage_order : 1,
+      sort_order: withinLane[lane] * 10,
+      state_type: studioStateTypeForRole(st),
+      name: st.label || st.id || key,
+      entry_action: "",
+      exit_action: "",
+      description: "",
+      owner_role: (d.owner && d.owner[st.id]) || st.role || "",
+      sla_minutes: null,
+      expected_duration_minutes: mins,
+      cost_min: cost,
+      cost_max: cost,
+      /* NOTE: manual_x and manual_y are deliberately NOT SET AT ALL — not
+         even to null.
+         editorDataToUnified() tests them with
+             const sx = Number(state.manual_x);
+             if (Number.isFinite(sx) && Number.isFinite(sy)) layout[id] = {x:sx,y:sy};
+         and Number(null) is 0, which IS finite. Setting them to null therefore
+         pins every state to (0,0) and stacks the whole workflow in one spot.
+         Leaving the keys absent gives Number(undefined) -> NaN, the check
+         fails, and the editor computes its own layout — which is what the
+         authored samples rely on, since they omit these keys too.
+         d.pos is Studio coordinates in any case; the editor canvas is a
+         different coordinate space (EDITOR_CANVAS_SIZE = 12000). */
+    };
+  });
+
+  const usedKeys = new Set();
+  const transitions = (wf.transitions || []).reduce(function (out, t, i) {
+    const from = keyFor.get(t.from);
+    const to = keyFor.get(t.to);
+    if (!from || !to) return out;              /* drop dangling edges */
+    let tkey = editorKey(from + "_" + t.on + "_" + to, "T" + (i + 1));
+    const base = tkey;
+    let n = 2;
+    while (usedKeys.has(tkey)) { tkey = base + "_" + (n++); }
+    usedKeys.add(tkey);
+    const p = d.branch && d.branch[t.from + "::" + t.on];
+    out.push({
+      process_key: pkey,
+      transition_key: tkey,
+      from_state_key: from,
+      to_state_key: to,
+      event_name: t.on || "event",
+      guard_condition: "",
+      action: "",
+      description: "",
+      sort_order: (i + 1) * 10,
+      cost_min: 0,
+      cost_max: 0,
+      branch_probability: typeof p === "number" ? p : null
+    });
+    return out;
+  }, []);
+
+  return {
+    process: {
+      process_key: pkey,
+      name: d.name || wf.name || "Workflow",
+      description: "",
+      process_domain: "",
+      owner_team: "",
+      naming_convention: "",
+      default_currency: "USD"
+    },
+    stages: stages,
+    states: states,
+    transitions: transitions,
+    costs: []
+  };
+}
+
 function studioDocToEditorData(d) {
+    /* No editor structure to update: synthesise one from the IR, so presets and
+       engine fixtures open in the Workflow Editor instead of arriving empty. */
+    if (d && d.wf && (!d.editorData || !isEditorData(d.editorData)))
+        return studioIRToEditorData(d);
     if (!d || !d.editorData || !isEditorData(d.editorData))
         return null;
     const data = dom_1.clone(d.editorData);
@@ -955,6 +1177,7 @@ exports["editorWorkflowIdMap"] = editorWorkflowIdMap;
 exports["editorDocTransitionKey"] = editorDocTransitionKey;
 exports["studioStateTypeForRole"] = studioStateTypeForRole;
 exports["studioDocToEditorData"] = studioDocToEditorData;
+exports["studioIRToEditorData"] = studioIRToEditorData;
 exports["toolHasComputed"] = toolHasComputed;
 exports["toolActive"] = toolActive;
 exports["resetTools"] = resetTools;

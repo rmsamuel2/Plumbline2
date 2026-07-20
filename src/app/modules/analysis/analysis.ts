@@ -30,6 +30,8 @@ var ed_1   = require("studio/modules/editor.ts");
 /* One-time initialisation. See the note above exports.default for why this
  * screen binds once instead of binding per mount. */
 var initialised = false;
+var CTX = null;   /* kept so init(), which runs once, can reach the library */
+var CTX = null;                       /* set by mount, used by init's bindings */
 
 
 /* main.ts:4-4 */
@@ -1678,6 +1680,8 @@ function renderAll() {
 exports["default"] = {
   mount: function (outlet, params, ctx) {
     this.ctx = ctx;
+    CTX = ctx;
+    CTX = ctx;
 
     /* Let editor.ts reach this screen without requiring it (avoids a cycle). */
     if (ed_1.setAnalysisHooks) ed_1.setAnalysisHooks({
@@ -1692,7 +1696,15 @@ exports["default"] = {
     var el = page();
     if (el) el.classList.add("active");
 
-    if (!initialised) { initialised = true; init(); }
+    if (!initialised) {
+      initialised = true;
+      init();
+      /* The workflow library — same panel the Editor opens. */
+      var rs = dom_1.$("btnReadSaveStudio");
+      if (rs) rs.addEventListener("click", function () {
+        if (CTX && CTX.library) CTX.library.open({ mode: "analysis" });
+      });
+    }
 
     this.offChange = ws_1.onChange(function () { renderAll(); });
     this.offTools  = ws_1.onRecomputeTools(function (a) { computeTool(a.doc, a.tool); });

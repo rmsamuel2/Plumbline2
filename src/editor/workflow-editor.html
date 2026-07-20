@@ -1509,7 +1509,7 @@
         <div class="controls" aria-label="Visualizer controls">
           <input id="processKey" type="hidden" value="ecommerce_order">
           <div class="controlGroup presetGroup" aria-label="Process controls">
-            <button id="btnReadSave" type="button" title="Read/Save is coming soon">Read/Save</button>
+            <button id="btnReadSave" type="button" title="Open the workflow library">Read/Save</button>
             <select id="exampleSelect" aria-label="Example process" hidden></select>
             <button id="createProcess">Create New</button>
           </div>
@@ -6013,6 +6013,19 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
         setEditMode(false);
       }
     });
+    /* Read/Save opens the workflow library, which lives in the parent document
+       because that is where the session and the data gateway are. The editor's
+       only job is to say the button was pressed. Mirrors requestAuth(). */
+    document.getElementById("btnReadSave").addEventListener("click", function () {
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "plumbline-library", mode: "editor" }, "*");
+          return;
+        }
+      } catch (err) { }
+      setStatus("Read/Save is only available inside Plumbline Studio.");
+    });
+
     document.getElementById("addStage").addEventListener("click", addStage);
     document.getElementById("addState").addEventListener("click", addState);
     document.getElementById("addTransition").addEventListener("click", addTransition);

@@ -319,7 +319,9 @@ app.get("/api/v2/workflows", requireSession, async (req, res, next) => {
         " v.version_id as \"currentVersionId\", v.version_number as \"currentVersion\", " +
         " v.kind as \"currentKind\", v.tools_executed as tools " +
         "from workflow w left join workflow_version v on v.version_id = w.current_version_id " +
-        "where w.owner_user_id = $1 order by w.updated_at desc", [req.session.userid]));
+        "where (w.owner_user_id = $1 or (w.visibility = 'SAMPLE' and w.lifecycle = 'ACTIVE')) " +
+        "  and (w.owner_user_id = $1 or w.lifecycle = 'ACTIVE') " +
+        "order by w.visibility, w.updated_at desc", [req.session.userid]));
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -363,7 +365,8 @@ app.get("/api/v2/workflows/:id", requireSession, async (req, res, next) => {
         "select workflow_id as id, name, description, group_id as \"groupId\", " +
         " current_version_id as \"currentVersionId\", created_at as \"createdAt\", " +
         " updated_at as \"updatedAt\" from workflow " +
-        "where workflow_id = $1 and (owner_user_id = $2 or $3)",
+        "where workflow_id = $1 " +
+        "  and (owner_user_id = $2 or (visibility = 'SAMPLE' and lifecycle = 'ACTIVE') or $3)",
         [req.params.id, req.session.userid, req.session.usertype === "superuser"]);
       if (!w) return null;
       w.versions = await q(
@@ -404,7 +407,8 @@ app.get("/api/v2/versions/:versionId", requireSession, async (req, res, next) =>
         " v.snapshot as workflow, v.config, v.tools_executed as \"toolsExecuted\", " +
         " v.layout, v.created_at as \"savedAt\" " +
         "from workflow_version v join workflow w on w.workflow_id = v.workflow_id " +
-        "where v.version_id = $1 and (w.owner_user_id = $2 or $3)",
+        "where v.version_id = $1 " +
+        "  and (w.owner_user_id = $2 or (w.visibility = 'SAMPLE' and w.lifecycle = 'ACTIVE') or $3)",
         [req.params.versionId, req.session.userid, req.session.usertype === "superuser"]));
     if (!v) return res.status(404).json({ error: "Not found" });
     await logActivity(req.session.userid, "open_workflow",
@@ -513,7 +517,8 @@ app.get("/api/v2/versions/:versionId/analyses", requireSession, async (req, res,
         "join workflow_version v on v.version_id = r.version_id " +
         "join workflow w on w.workflow_id = v.workflow_id " +
         "left join analysis_finding f on f.run_id = r.run_id " +
-        "where r.version_id = $1 and (w.owner_user_id = $2 or $3) " +
+        "where r.version_id = $1 " +
+        "  and (w.owner_user_id = $2 or (w.visibility = 'SAMPLE' and w.lifecycle = 'ACTIVE') or $3) " +
         "group by r.run_id order by r.started_at desc",
         [req.params.versionId, req.session.userid, req.session.usertype === "superuser"]));
     res.json(rows);
@@ -529,10 +534,16 @@ app.get("/api/workflows", requireSession, async (req, res, next) => {
   try {
     const rows = await tx(ctx(req), ({ q }) =>
       q("select w.workflow_id as id, w.name, w.updated_at as \"savedAt\", " +
+        " w.group_id as \"groupId\", w.visibility, w.lifecycle, " +
+        " (w.owner_user_id = $1) as \"isMine\", " +
         " coalesce(v.tools_executed, '[]'::jsonb) as tools, " +
         " v.version_number as \"versionNumber\" " +
         "from workflow w left join workflow_version v on v.version_id = w.current_version_id " +
-        "where w.owner_user_id = $1 order by w.updated_at desc", [req.session.userid]));
+        // migration 004: a user sees their own work in any lifecycle (so archive
+        // and trash are reachable) plus every live sample.
+        "where (w.owner_user_id = $1 or (w.visibility = 'SAMPLE' and w.lifecycle = 'ACTIVE')) " +
+        "  and (w.owner_user_id = $1 or w.lifecycle = 'ACTIVE') " +
+        "order by w.visibility, w.updated_at desc", [req.session.userid]));
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -544,14 +555,75 @@ app.get("/api/workflows/:id", requireSession, async (req, res, next) => {
         " v.tools_executed as \"toolsExecuted\", v.layout, v.created_at as \"savedAt\", " +
         " v.version_id as \"versionId\", v.version_number as \"versionNumber\" " +
         "from workflow w join workflow_version v on v.version_id = w.current_version_id " +
-        "where w.workflow_id = $1 and w.owner_user_id = $2",
-        [req.params.id, req.session.userid]));
+        // migration 004: loading a sample is allowed; editing one is not.
+        "where w.workflow_id = $1 " +
+        "  and (w.owner_user_id = $2 or (w.visibility = 'SAMPLE' and w.lifecycle = 'ACTIVE') or $3)",
+        [req.params.id, req.session.userid, req.session.usertype === "superuser"]));
     if (!v) return res.status(404).json({ error: "Not found" });
     await logActivity(req.session.userid, "open_workflow",
       { workflowId: req.params.id, versionId: v.versionId });
     res.json(v);
   } catch (e) { next(e); }
 });
+/* ---------------------------------------------------------------------------
+ * Migration 004 — lifecycle and visibility.
+ * Both go through the database functions rather than raw UPDATEs, so the
+ * audit columns and audit_log are always written and the authorisation rule
+ * lives in exactly one place.
+ * ------------------------------------------------------------------------- */
+app.post("/api/workflows/:id/lifecycle", requireSession, async (req, res, next) => {
+  try {
+    const wanted = String((req.body || {}).lifecycle || "").toUpperCase();
+    if (!["ACTIVE", "ARCHIVED", "TRASHED"].includes(wanted))
+      return res.status(400).json({ error: "lifecycle must be ACTIVE, ARCHIVED or TRASHED" });
+    await tx(ctx(req), ({ o }) =>
+      o("select set_workflow_lifecycle($1, $2, $3) as id",
+        [req.session.userid, req.params.id, wanted]));
+    await logActivity(req.session.userid, "workflow_lifecycle",
+      { workflowId: req.params.id, lifecycle: wanted });
+    res.json({ ok: true, lifecycle: wanted });
+  } catch (e) {
+    if (/not permitted|not found/i.test(String(e.message)))
+      return res.status(403).json({ error: e.message });
+    next(e);
+  }
+});
+
+app.post("/api/workflows/:id/visibility", requireSession, async (req, res, next) => {
+  try {
+    if (req.session.usertype !== "superuser")
+      return res.status(403).json({ error: "only a superuser may publish a sample" });
+    const wanted = String((req.body || {}).visibility || "").toUpperCase();
+    if (!["PRIVATE", "SAMPLE"].includes(wanted))
+      return res.status(400).json({ error: "visibility must be PRIVATE or SAMPLE" });
+    await tx(ctx(req), ({ o }) =>
+      o("select set_workflow_visibility($1, $2, $3) as id",
+        [req.session.userid, req.params.id, wanted]));
+    await logActivity(req.session.userid, "workflow_visibility",
+      { workflowId: req.params.id, visibility: wanted });
+    res.json({ ok: true, visibility: wanted });
+  } catch (e) {
+    if (/only a superuser|not found/i.test(String(e.message)))
+      return res.status(403).json({ error: e.message });
+    next(e);
+  }
+});
+
+/* Load every ACTIVE workflow in one folder — the navigation pane's
+ * "open a folder" action. Samples have no folder, so this is own-work only. */
+app.get("/api/groups/:id/workflows", requireSession, async (req, res, next) => {
+  try {
+    const rows = await tx(ctx(req), ({ q }) =>
+      q("select w.workflow_id as id, w.name, w.description, " +
+        " v.snapshot as workflow, v.config, v.tools_executed as \"toolsExecuted\", " +
+        " v.layout, v.version_number as \"versionNumber\" " +
+        "from workflow w join workflow_version v on v.version_id = w.current_version_id " +
+        "where w.group_id = $1 and w.owner_user_id = $2 and w.lifecycle = 'ACTIVE' " +
+        "order by w.name", [req.params.id, req.session.userid]));
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
 app.delete("/api/workflows/:id", requireSession, deleteWorkflowHandler);
 
 /* =============================================================================

@@ -240,12 +240,72 @@ function schedulePushStudioToEditor() {
 /* ---------- engine analysis tab ---------- */
 
 
+
+/* ---------------------------------------------------------------------------
+ * The workflow bar, above the iframe.
+ * workspace.docs[] is shared with the Analysis Studio, so opening a folder in
+ * the library gives both screens the same set of documents. This renders them
+ * as tabs; switching one pushes that document into the editor.
+ * -------------------------------------------------------------------------*/
+function renderEditorTabs() {
+  var bar = document.getElementById("editorWfbar");
+  if (!bar) return;
+  bar.innerHTML = "";
+  var docs = ws_1.getDocs();
+  if (docs.length < 2) { bar.style.display = "none"; return; }
+  bar.style.display = "";
+  docs.forEach(function (d, i) {
+    var b = dom_1.el("button",
+      { class: "wfbtn" + (i === ws_1.getActive() ? " on" : "") },
+      (i + 1) + ". " + (d.name || "Workflow"));
+    b.addEventListener("click", function () {
+      ws_1.setActive(i);
+      ws_1.setSel(null);
+      schedulePushStudioToEditor();
+      ws_1.emitChange();
+      renderEditorTabs();
+    });
+    bar.append(b);
+  });
+}
+
 /* ---------------------------------------------------------------------------
  * Module contract
  * -------------------------------------------------------------------------*/
+
+/* ---------------------------------------------------------------------------
+ * Tab strip.
+ * workspace.docs[] already drives the Studio's tab bar; this renders the same
+ * list above the editor iframe so both screens show the same open workflows.
+ * Switching a tab makes that document active and pushes it into the iframe.
+ * ------------------------------------------------------------------------- */
+function renderEditorTabs() {
+  var bar = document.getElementById("editorWfbar");
+  if (!bar) return;
+  var docs = ws_1.getDocs();
+  bar.innerHTML = "";
+  bar.style.display = docs.length > 1 ? "" : "none";
+  if (docs.length < 2) return;
+  docs.forEach(function (d, i) {
+    var b = document.createElement("button");
+    b.className = "wfbtn" + (i === ws_1.getActive() ? " on" : "");
+    b.textContent = (i + 1) + ". " + (d.name || "Workflow");
+    b.addEventListener("click", function () {
+      ws_1.setActive(i);
+      ws_1.setSel(null);
+      pushStudioToEditor();
+      ws_1.emitChange();
+      renderEditorTabs();
+    });
+    bar.appendChild(b);
+  });
+}
+
 function page() { return document.getElementById("editorPage"); }
 
 var recentredOnce = false, recentreTries = 0;
+var CTX = null;                 /* set by init(), used by the message handler */
+var offChange = null;
 
 exports["default"] = {
   mount: function (outlet, params, ctx) {
@@ -293,6 +353,10 @@ exports["default"] = {
     }
 
     this.offPush = ws_1.onPushToEditor(function () { schedulePushStudioToEditor(); });
+    this.offTabs = ws_1.onChange(function () { renderEditorTabs(); });
+    renderEditorTabs();
+    offChange = ws_1.onChange(renderEditorTabs);
+    renderEditorTabs();
 
     if (typeof window.plumblineBroadcastAuth === "function")
       setTimeout(window.plumblineBroadcastAuth, 60);
@@ -305,6 +369,8 @@ exports["default"] = {
     try { requestEditorSync({ silent: true }); } catch (e) {}
 
     if (this.offPush) { this.offPush(); this.offPush = null; }
+    if (this.offTabs) { this.offTabs(); this.offTabs = null; }
+    if (offChange) { offChange(); offChange = null; }
     if (studioPushTimer) { clearTimeout(studioPushTimer); studioPushTimer = null; }
 
     var el = page();
@@ -323,7 +389,19 @@ exports["default"] = {
  * user who goes straight to Analysis gets no editor snapshots at all.
  * -------------------------------------------------------------------------*/
 exports.init = function (ctx) {
+  CTX = ctx;
   setupEditorSync();
+
+  /* The editor document is separate and cannot reach the module registry, so
+     its Read/Save button posts a message. Flush first: the user's most recent
+     edits live inside the iframe until asked for, and the library saves what
+     the workspace holds. */
+  window.addEventListener("message", function (ev) {
+    var d = ev && ev.data;
+    if (!d || d.type !== "plumbline-library") return;
+    try { requestEditorSync({ silent: true }); } catch (e) { }
+    if (CTX && CTX.library) CTX.library.open({ mode: "editor" });
+  });
   /* C2: the iframe is a separate document and calls these by name at any time. */
   window.plumblineImportEditorData = function (data, opts) {
     return importEditorData(data, opts || {});
@@ -338,6 +416,14 @@ exports["importEditorData"] = importEditorData;
 exports["requestEditorSync"] = requestEditorSync;
 exports["pushStudioToEditor"] = pushStudioToEditor;
 exports["schedulePushStudioToEditor"] = schedulePushStudioToEditor;
+/* The editor iframe posts { type: "plumbline-library" } when its Read/Save
+ * button is pressed. Flush first: the user's most recent edits live inside the
+ * iframe until asked for, and the library saves whatever the workspace holds. */
+exports.openLibraryFromEditor = function () {
+  try { requestEditorSync({ silent: true }); } catch (e) { }
+  if (CTX && CTX.library) CTX.library.open({ mode: "editor" });
+};
+
 exports.setAnalysisHooks = function (h) { HOOKS = Object.assign(HOOKS, h || {}); };
 
 }, {"@plumbline/io":"packages/io/src/index.ts"});
