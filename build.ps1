@@ -32,6 +32,14 @@ $Parts = @(
     @('@@DATA_GATEWAY_JS@@',   'data/data-gateway.js',        'text'),
     @('@@LLM_GATEWAY_JS@@',    'llm/llm-gateway.js',          'text'),
     @('@@UI_MODULES_JS@@',     'app/ui-modules.gen.js',       'text'),
+    @('@@SHARED_DOM_JS@@',       'app/modules/shared/dom.ts',        'text'),
+    @('@@SHARED_WORKSPACE_JS@@', 'app/modules/shared/workspace.ts',  'text'),
+    @('@@SHARED_AUTH_JS@@',      'app/modules/shared/auth.ts',       'text'),
+    @('@@SHARED_LIBRARY_JS@@',   'app/modules/shared/library.ts',    'text'),
+    @('@@MODULE_EDITOR_JS@@',    'app/modules/editor/editor.ts',     'text'),
+    @('@@MODULE_ANALYSIS_JS@@',  'app/modules/analysis/analysis.ts', 'text'),
+    @('@@MODULE_HOME_JS@@',      'app/modules/home/home.ts',         'text'),
+    @('@@ROUTER_JS@@',           'app/router.js',                    'text'),
     @('@@UI_BOOT_JS@@',        'app/ui-boot.js',              'text'),
     @('@@EDITOR_HTML_B64@@',   'editor/workflow-editor.html', 'b64'),
     @('@@LOADER_JS@@',         'app/loader.js',               'text')
@@ -46,8 +54,10 @@ $RequiredGlobals = @(
 )
 
 function Read-TextFile([string]$Path) {
-    # UTF-8 without BOM, newlines preserved.
-    return [System.IO.File]::ReadAllText($Path, [System.Text.UTF8Encoding]::new($false))
+    # Match Python's universal-newline reads so both supported builders remain
+    # byte-identical even when a source file was edited with CRLF line endings.
+    $text = [System.IO.File]::ReadAllText($Path, [System.Text.UTF8Encoding]::new($false))
+    return $text.Replace("`r`n", "`n").Replace("`r", "`n")
 }
 
 function Read-B64File([string]$Path) {

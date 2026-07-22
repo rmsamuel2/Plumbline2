@@ -30,8 +30,8 @@ var ed_1   = require("studio/modules/editor.ts");
 /* One-time initialisation. See the note above exports.default for why this
  * screen binds once instead of binding per mount. */
 var initialised = false;
-var CTX = null;   /* kept so init(), which runs once, can reach the library */
-var CTX = null;                       /* set by mount, used by init's bindings */
+var CTX = null;   /* set by mount; retained so one-time bindings reach services */
+var strategicSort = "opportunity";
 
 
 /* main.ts:4-4 */
@@ -916,8 +916,77 @@ document.addEventListener("keydown", e => {
 });
 
 /* main.ts:1090-1167 */
+function strategicRows() {
+    return ws_1.getDocs().map((d, index) => {
+        let opportunityCost = 0, opportunityTime = 0, appliedCost = 0, appliedTime = 0;
+        let findings = 0, appliedFindings = 0, completedTools = 0;
+        const stateCount = d.wf && Array.isArray(d.wf.states) ? d.wf.states.length : 0;
+        const transitionCount = d.wf && Array.isArray(d.wf.transitions) ? d.wf.transitions.length : 0;
+        for (let i = 0; stateCount > 0 && i < 6; i++) {
+            computeTool(d, i);
+            const ids = (d.toolIds[i] || []).filter(id => !d.overruled.has(id) && d.sugs[id]);
+            const meaningful = ids.filter(id => { const s = d.sugs[id]; return !!s && (s.cost > 0 || s.time > 0 || !s.clarity); });
+            meaningful.forEach(id => {
+                const s = d.sugs[id];
+                opportunityCost += s.cost || 0;
+                opportunityTime += s.time || 0;
+                findings += 1;
+                if (d.applied.has(id)) {
+                    appliedCost += s.cost || 0;
+                    appliedTime += s.time || 0;
+                    appliedFindings += 1;
+                }
+            });
+            if (ws_1.toolActive(d, i))
+                completedTools += 1;
+        }
+        return { d, index, name: d.name || "Untitled workflow", opportunityCost, opportunityTime,
+            appliedCost, appliedTime, findings, appliedFindings, completedTools, stateCount, transitionCount,
+            coverage: Math.round(completedTools / 6 * 100) };
+    });
+}
+
+function renderStrategicSidePanel(rows) {
+    const host = analysisSavingsHost();
+    const pane = dom_1.$("pane_analysis");
+    if (pane)
+        pane.scrollTop = 0;
+    if (host) {
+        host.innerHTML = "";
+        const totalCost = rows.reduce((sum, r) => sum + r.opportunityCost, 0);
+        const totalTime = rows.reduce((sum, r) => sum + r.opportunityTime, 0);
+        host.append(dom_1.el("div", { class: "analysisSavingsBox strategicPanelSummary" },
+            dom_1.el("div", { class: "analysisSavingsEyebrow" }, "Portfolio lens"),
+            dom_1.el("h3", {}, "Across " + rows.length + " open workflow" + (rows.length === 1 ? "" : "s")),
+            dom_1.el("div", { class: "strategicPanelValue" }, dom_1.fmt(totalCost) + " · " + dom_1.fmin(totalTime)),
+            dom_1.el("p", { class: "hint" }, "Opportunity estimates are illustrative. Structural findings remain certified in each workflow's analysis.")));
+        host.append(dom_1.el("div", { class: "analysisSavingsBox strategicPanelGuide" },
+            dom_1.el("div", { class: "analysisSavingsEyebrow" }, "How to use this view"),
+            dom_1.el("h3", {}, "Compare, prioritize, then inspect"),
+            dom_1.el("p", {}, "Compare opportunity and coverage here, then use Open analysis on a workflow to inspect its certified and refuted findings.")));
+    }
+    const results = dom_1.$("results");
+    if (results) {
+        results.style.display = "none";
+        results.srcdoc = '<div style="font:14px/1.55 Arial,sans-serif;color:#16243B;background:#fffdf7;padding:20px"><b>Portfolio analysis</b><p>Use the Strategic Value cards to compare opportunity, analysis coverage, and findings across the workflows that are open now.</p><p>Select <b>Open analysis</b> to inspect the certified and refuted findings for one workflow.</p></div>';
+    }
+}
+
+function openStrategicWorkflow(index) {
+    ws_1.setActive(index);
+    ws_1.setSel(null);
+    ws_1.setLastTool(-2);
+    full();
+    showTab("analysis");
+}
+
 function renderSigma() {
     setAnalysisPanMode(false);
+    const scroll = dom_1.$("cvscroll");
+    if (scroll) {
+        scroll.scrollLeft = 0;
+        scroll.scrollTop = 0;
+    }
     dom_1.$("cv").style.display = "none";
     dom_1.$("empty").style.display = "none";
     dom_1.$("canvastools").style.display = "none";
@@ -926,72 +995,105 @@ function renderSigma() {
     const box = dom_1.$("sigma");
     box.style.display = "block";
     box.innerHTML = "";
-    box.append(dom_1.el("h2", { class: "sigh" }, "Σ  Strategic value — combined leverage"));
-    if (!ws_1.getDocs().length) {
-        box.append(dom_1.el("p", { class: "hint" }, "Add workflows to see how their savings combine."));
+    const docs = ws_1.getDocs();
+    if (!docs.length) {
+        box.append(dom_1.el("div", { class: "strategicEmpty" },
+            dom_1.el("div", { class: "strategicMark" }, "Σ"),
+            dom_1.el("h2", {}, "Strategic value starts with a workflow"),
+            dom_1.el("p", {}, "Create, open, or add an example workflow to compare opportunities across your portfolio.")));
+        renderStrategicSidePanel([]);
         return;
     }
-    const rows = ws_1.getDocs().map(d => { const tv = ws_1.totals(d); return { name: d.name, c: tv.c, t: tv.t, n: ws_1.effective(d).length }; });
-    const TC = rows.reduce((a, r) => a + r.c, 0), TT = rows.reduce((a, r) => a + r.t, 0);
-    // ----- TOP-LEVEL PICTURE: one shared backbone feeding each workflow -----
-    box.append(dom_1.el("div", { class: "eyebrow2" }, "Top level — one shared backbone, savings that compound"));
-    const n = rows.length, Wd = Math.max(860, n * 168), VB = 240;
-    const top = dom_1.svg("svg", { viewBox: "0 0 " + Wd + " " + VB, width: "100%", style: "max-width:" + Wd + "px;display:block;margin:8px 0 18px" });
-    const hx = Wd / 2, hy = 178, sw = 148, sh = 50, sy = 28;
-    rows.forEach((r, i) => {
-        const sx = (Wd / n) * (i + 0.5) - sw / 2;
-        top.append(dom_1.svg("line", { x1: String(sx + sw / 2), y1: String(sy + sh), x2: String(hx), y2: String(hy - 44), stroke: "#bcd6cf", "stroke-width": "1.6" }));
-        top.append(dom_1.svg("rect", { x: String(sx), y: String(sy), width: String(sw), height: String(sh), rx: "9", fill: "#fff", stroke: "#1F7A6F", "stroke-width": "1.5" }));
-        const t1 = dom_1.svg("text", { x: String(sx + sw / 2), y: String(sy + 20), "text-anchor": "middle", "font-size": "12", "font-weight": "bold", fill: "#16243B" });
-        t1.textContent = r.name;
-        top.append(t1);
-        const t2 = dom_1.svg("text", { x: String(sx + sw / 2), y: String(sy + 37), "text-anchor": "middle", "font-size": "11", fill: "#1F7A6F" });
-        t2.textContent = (r.c ? dom_1.fmt(r.c) : "—") + (r.t ? "  ·  " + dom_1.fmin(r.t) : "");
-        top.append(t2);
+    const rows = strategicRows();
+    renderStrategicSidePanel(rows);
+    const totalCost = rows.reduce((sum, r) => sum + r.opportunityCost, 0);
+    const totalTime = rows.reduce((sum, r) => sum + r.opportunityTime, 0);
+    const totalFindings = rows.reduce((sum, r) => sum + r.findings, 0);
+    const appliedCost = rows.reduce((sum, r) => sum + r.appliedCost, 0);
+    const appliedTime = rows.reduce((sum, r) => sum + r.appliedTime, 0);
+    const averageCoverage = Math.round(rows.reduce((sum, r) => sum + r.coverage, 0) / rows.length);
+
+    const dashboard = dom_1.el("div", { class: "strategicDashboard" });
+    const hero = dom_1.el("section", { class: "strategicHero" });
+    const heroCopy = dom_1.el("div", { class: "strategicHeroCopy" },
+        dom_1.el("div", { class: "strategicEyebrow" }, "Portfolio intelligence"),
+        dom_1.el("h2", {}, "Strategic value across open workflows"),
+        dom_1.el("p", {}, "Compare the opportunity identified by all six Plumbline checks with the value already applied to each workflow."));
+    const heroActions = dom_1.el("div", { class: "strategicHeroActions" });
+    heroActions.append(dom_1.btn("Apply across workflows", applyAll, "btn primary"));
+    heroActions.append(dom_1.btn("Export summary", downloadCurrent, "btn ghost"));
+    hero.append(heroCopy, heroActions);
+    dashboard.append(hero);
+
+    const metrics = dom_1.el("section", { class: "strategicMetrics", "aria-label": "Portfolio totals" });
+    [["Open workflows", String(rows.length), rows.reduce((sum, r) => sum + r.stateCount, 0) + " total states"],
+        ["Cost opportunity", dom_1.fmt(totalCost), dom_1.fmt(appliedCost) + " applied"],
+        ["Time opportunity", dom_1.fmin(totalTime), dom_1.fmin(appliedTime) + " applied"],
+        ["Analysis coverage", averageCoverage + "%", totalFindings + " finding" + (totalFindings === 1 ? "" : "s")]
+    ].forEach((m, i) => metrics.append(dom_1.el("article", { class: "strategicMetric metric" + (i + 1) },
+        dom_1.el("span", {}, m[0]), dom_1.el("strong", {}, m[1]), dom_1.el("small", {}, m[2]))));
+    dashboard.append(metrics);
+
+    const sectionHead = dom_1.el("div", { class: "strategicSectionHead" },
+        dom_1.el("div", {}, dom_1.el("div", { class: "strategicEyebrow" }, "Workflow comparison"), dom_1.el("h3", {}, "Where to focus next")));
+    const sortLabel = dom_1.el("label", { class: "strategicSort" }, dom_1.el("span", {}, "Sort by"));
+    const sort = dom_1.el("select", { "aria-label": "Sort strategic workflows" });
+    [["opportunity", "Largest opportunity"], ["cost", "Cost opportunity"], ["time", "Time opportunity"],
+        ["findings", "Most findings"], ["coverage", "Lowest coverage"], ["name", "Workflow name"]].forEach(pair => {
+        const option = dom_1.el("option", { value: pair[0] }, pair[1]);
+        if (strategicSort === pair[0])
+            option.selected = true;
+        sort.append(option);
     });
-    top.append(dom_1.svg("circle", { cx: String(hx), cy: String(hy), r: "62", fill: "#16243B" }));
-    const c1 = dom_1.svg("text", { x: String(hx), y: String(hy - 16), "text-anchor": "middle", fill: "#fff", "font-size": "12", "font-weight": "bold" });
-    c1.textContent = "Shared backbone";
-    top.append(c1);
-    const c2 = dom_1.svg("text", { x: String(hx), y: String(hy), "text-anchor": "middle", fill: "#8fd3c8", "font-size": "10" });
-    c2.textContent = "data · price once · controls";
-    top.append(c2);
-    const c3 = dom_1.svg("text", { x: String(hx), y: String(hy + 20), "text-anchor": "middle", fill: "#fff", "font-size": "15", "font-weight": "bold" });
-    c3.textContent = dom_1.fmt(TC);
-    top.append(c3);
-    const c4 = dom_1.svg("text", { x: String(hx), y: String(hy + 36), "text-anchor": "middle", fill: "#8fd3c8", "font-size": "9.5" });
-    c4.textContent = dom_1.fmin(TT) + " combined";
-    top.append(c4);
-    box.append(top);
-    // ----- SUB-LEVEL PICTURE: savings by workflow (bars) -----
-    box.append(dom_1.el("div", { class: "eyebrow2" }, "Sub level — where the saving sits, workflow by workflow"));
-    const maxC = Math.max(1, ...rows.map(r => r.c)), maxT = Math.max(1, ...rows.map(r => r.t));
-    const bars = dom_1.el("div", { class: "bars" });
-    rows.forEach(r => {
-        const row = dom_1.el("div", { class: "barrow" });
-        row.append(dom_1.el("div", { class: "barlabel" }, r.name));
-        const track = dom_1.el("div", { class: "track" });
-        const cf = dom_1.el("div", { class: "barfill c" });
-        cf.style.width = Math.round(r.c / maxC * 100) + "%";
-        cf.append(dom_1.el("span", {}, r.c ? dom_1.fmt(r.c) : "—"));
-        const tf = dom_1.el("div", { class: "barfill t" });
-        tf.style.width = Math.round(r.t / maxT * 100) + "%";
-        tf.append(dom_1.el("span", {}, r.t ? dom_1.fmin(r.t) : "—"));
-        track.append(cf);
-        track.append(tf);
-        row.append(track);
-        bars.append(row);
+    sort.addEventListener("change", () => { strategicSort = sort.value; renderSigma(); });
+    sortLabel.append(sort);
+    sectionHead.append(sortLabel);
+    dashboard.append(sectionHead);
+
+    const ordered = rows.slice().sort((a, b) => {
+        if (strategicSort === "name")
+            return a.name.localeCompare(b.name);
+        if (strategicSort === "cost")
+            return b.opportunityCost - a.opportunityCost;
+        if (strategicSort === "time")
+            return b.opportunityTime - a.opportunityTime;
+        if (strategicSort === "findings")
+            return b.findings - a.findings;
+        if (strategicSort === "coverage")
+            return a.coverage - b.coverage;
+        return (b.opportunityCost - a.opportunityCost) || (b.opportunityTime - a.opportunityTime) || (b.findings - a.findings);
     });
-    box.append(bars);
-    box.append(dom_1.el("div", { class: "barkey" }, dom_1.el("i", { class: "sw c" }), " cost saved    ", dom_1.el("i", { class: "sw t" }), " time saved   ", dom_1.el("span", { class: "ill" }, "(illustrative)")));
-    // ----- leverage notes -----
-    const ul = dom_1.el("ul", { class: "leverage" });
-    ["One canonical dataset feeds AML, CARF and FMV — fix data once, every workflow benefits.",
-        "Prices are computed once and reused — a restatement is a single lineage-driven recall, not three.",
-        "One onboarding/change fans out to every service under one approval and one evidence set.",
-        "No-bypass approvals and provable lineage are built once and defend all the workflows."].forEach(t => ul.append(dom_1.el("li", {}, t)));
-    box.append(dom_1.el("h3", {}, "Kept separate where necessary — shared where it pays"));
-    box.append(ul);
+    const list = dom_1.el("section", { class: "strategicList" });
+    ordered.forEach((r, rank) => {
+        const card = dom_1.el("article", { class: "strategicWorkflowCard" });
+        const identity = dom_1.el("div", { class: "strategicWorkflowIdentity" },
+            dom_1.el("span", { class: "strategicRank" }, String(rank + 1)),
+            dom_1.el("div", {}, dom_1.el("h4", {}, r.name), dom_1.el("p", {}, r.stateCount + " states · " + r.transitionCount + " transitions · " + r.findings + " findings")));
+        const value = dom_1.el("div", { class: "strategicWorkflowValue" },
+            dom_1.el("div", {}, dom_1.el("span", {}, "Opportunity"), dom_1.el("strong", {}, dom_1.fmt(r.opportunityCost) + " · " + dom_1.fmin(r.opportunityTime))),
+            dom_1.el("div", {}, dom_1.el("span", {}, "Applied"), dom_1.el("strong", {}, dom_1.fmt(r.appliedCost) + " · " + dom_1.fmin(r.appliedTime))));
+        const progressFill = dom_1.el("i", {});
+        progressFill.style.width = r.coverage + "%";
+        const coverage = dom_1.el("div", { class: "strategicCoverage" },
+            dom_1.el("div", {}, dom_1.el("span", {}, "Analysis coverage"), dom_1.el("b", {}, r.coverage + "%")),
+            dom_1.el("div", { class: "strategicProgress", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(r.coverage) }, progressFill));
+        const action = dom_1.btn("Open analysis", () => openStrategicWorkflow(r.index), "btn ghost strategicOpen");
+        card.append(identity, value, coverage, action);
+        list.append(card);
+    });
+    dashboard.append(list);
+
+    const costLeader = rows.slice().sort((a, b) => b.opportunityCost - a.opportunityCost)[0];
+    const timeLeader = rows.slice().sort((a, b) => b.opportunityTime - a.opportunityTime)[0];
+    const coverageLeader = rows.slice().sort((a, b) => a.coverage - b.coverage)[0];
+    const insights = dom_1.el("section", { class: "strategicInsights" },
+        dom_1.el("div", { class: "strategicEyebrow" }, "Portfolio signals"),
+        dom_1.el("div", { class: "strategicInsightGrid" },
+            dom_1.el("article", {}, dom_1.el("span", {}, "Largest cost opportunity"), dom_1.el("strong", {}, costLeader.name), dom_1.el("small", {}, dom_1.fmt(costLeader.opportunityCost) + " illustrative")),
+            dom_1.el("article", {}, dom_1.el("span", {}, "Largest time opportunity"), dom_1.el("strong", {}, timeLeader.name), dom_1.el("small", {}, dom_1.fmin(timeLeader.opportunityTime) + " illustrative")),
+            dom_1.el("article", {}, dom_1.el("span", {}, "Needs the most analysis"), dom_1.el("strong", {}, coverageLeader.name), dom_1.el("small", {}, coverageLeader.completedTools + " of 6 checks applied"))));
+    dashboard.append(insights, dom_1.el("p", { class: "strategicDisclaimer" }, "Savings are assumption-based estimates. Open a workflow to inspect its lemma-certified and refuted structural findings."));
+    box.append(dashboard);
 }
 /* ---------- right panel: Tools / Table / JSON / Analysis ---------- */
 
@@ -1176,6 +1278,11 @@ function analysisSavingsHost() {
 function stepSavingsRows(d) {
     var _a;
     const rows = [];
+    if (!d || !d.wf || !Array.isArray(d.wf.states) || !d.wf.states.length) {
+        for (let i = 0; i < 6; i++)
+            rows.push({ index: i, step: i + 1, name: (presets_1.TOOL_META[i] && presets_1.TOOL_META[i].name) || ("Tool " + (i + 1)), cost: 0, time: 0, count: 0, status: "not run", result: "Add workflow steps", applied: false });
+        return rows;
+    }
     for (let i = 0; i < 6; i++) {
         computeTool(d, i);
         const ids = d.toolIds[i] || [];
@@ -1204,6 +1311,9 @@ function stepSavingsRows(d) {
 /* main.ts:1893-1921 */
 function renderAnalysisSavings(d) {
     const host = analysisSavingsHost();
+    const results = dom_1.$("results");
+    if (results)
+        results.style.display = "block";
     if (!host)
         return;
     host.innerHTML = "";
@@ -1232,11 +1342,42 @@ function renderAnalysisSavings(d) {
     host.append(box);
 }
 
+function resizeResultsFrame() {
+    const frame = dom_1.$("results");
+    if (!frame || frame.style.display === "none")
+        return;
+    try {
+        const doc = frame.contentDocument;
+        if (!doc)
+            return;
+        if (doc.documentElement)
+            doc.documentElement.style.overflow = "hidden";
+        if (doc.body)
+            doc.body.style.overflow = "hidden";
+        const bodyHeight = doc.body ? Math.max(doc.body.scrollHeight, doc.body.offsetHeight) : 0;
+        const rootHeight = doc.documentElement ? Math.max(doc.documentElement.scrollHeight, doc.documentElement.offsetHeight) : 0;
+        frame.style.height = Math.max(220, bodyHeight, rootHeight) + 8 + "px";
+        const pane = dom_1.$("pane_analysis");
+        if (pane) {
+            pane.scrollTop = 0;
+            requestAnimationFrame(() => requestAnimationFrame(() => { pane.scrollTop = 0; }));
+            setTimeout(() => { pane.scrollTop = 0; }, 240);
+        }
+    }
+    catch (_err) { }
+}
+
 /* main.ts:1922-1949 */  /* PHASE2: becomes await ctx.engine.analyze(...) */
 function runAnalysis() {
     ed_1.requestEditorSync({ silent: true });
+    const pane = dom_1.$("pane_analysis");
+    if (pane)
+        pane.scrollTop = 0;
     if (ws_1.getActive() < 0) {
-        renderAnalysisSavings();
+        if (ws_1.getActive() === -1)
+            renderStrategicSidePanel(strategicRows());
+        else
+            renderAnalysisSavings();
         return;
     }
     const d = ws_1.D();
@@ -1266,10 +1407,30 @@ function runAnalysis() {
 function renderWfBar() {
     const bar = dom_1.$("wfbar");
     bar.innerHTML = "";
-    ws_1.getDocs().forEach((d, i) => { const b = dom_1.el("button", { class: "wfbtn" + (i === ws_1.getActive() ? " on" : "") }, (i + 1) + ". " + d.name); b.addEventListener("click", () => { ws_1.setActive(i); ws_1.setSel(null); ws_1.setLastTool(-2); full(); }); bar.append(b); });
-    const sg = dom_1.el("button", { class: "wfbtn sigma" + (ws_1.getActive() === -1 ? " on" : "") }, "Σ Strategic value");
+    bar.setAttribute("role", "tablist");
+    bar.setAttribute("aria-label", "Open workflows");
+    ws_1.getDocs().forEach((d, i) => {
+        const tab = dom_1.el("div", { class: "wfTab" + (i === ws_1.getActive() ? " on" : "") });
+        const main = dom_1.el("button", { class: "wfTabMain", role: "tab", title: d.name,
+            "aria-selected": String(i === ws_1.getActive()) });
+        main.append(dom_1.el("span", { class: "wfTabIndex" }, String(i + 1)));
+        main.append(dom_1.el("span", { class: "wfTabName" }, d.name || "Workflow"));
+        main.addEventListener("click", () => { ws_1.setActive(i); ws_1.setSel(null); ws_1.setLastTool(-2); full(); showTab("analysis"); });
+        const close = dom_1.el("button", { class: "wfTabClose", title: "Close " + (d.name || "workflow"),
+            "aria-label": "Close " + (d.name || "workflow") }, "×");
+        close.disabled = ws_1.getDocs().length <= 1;
+        close.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (ws_1.closeDoc(i)) { full(); ws_1.persist(); }
+        });
+        tab.append(main, close);
+        bar.append(tab);
+    });
+    const sg = dom_1.el("button", { class: "wfTab sigma" + (ws_1.getActive() === -1 ? " on" : ""), role: "tab",
+        "aria-selected": String(ws_1.getActive() === -1) }, "Σ Strategic value");
     sg.addEventListener("click", () => { ws_1.setActive(-1); full(); });
     bar.append(sg);
+    syncStudioControls();
 }
 /* ---------- node drag/connect ---------- */
 
@@ -1451,11 +1612,13 @@ function flashTools(msg) {
 /* main.ts:2354-2370 */
 function applyPanel() {
     const right = dom_1.$("right");
-    if (right)
-        right.style.display = ws_1.isPanelHidden() ? "none" : "flex";
     const app = dom_1.$("app");
     if (app)
-        app.style.gridTemplateColumns = ws_1.isPanelHidden() ? "minmax(0,1fr) 14px 0" : "minmax(0,1.5fr) 14px minmax(320px,1fr)";
+        app.classList.toggle("panelCollapsed", ws_1.isPanelHidden());
+    if (right) {
+        right.setAttribute("aria-hidden", String(ws_1.isPanelHidden()));
+        right.inert = ws_1.isPanelHidden();
+    }
     const hideBtn = dom_1.$("btnHide");
     if (hideBtn)
         hideBtn.textContent = ws_1.isPanelHidden() ? "Show panel" : "Remove right panel";
@@ -1470,12 +1633,32 @@ function applyPanel() {
 /* main.ts:2371-2375 */
 function togglePanel() { ws_1.setPanelHidden(!ws_1.isPanelHidden()); applyPanel(); if (ws_1.getActive() >= 0 && ws_1.getDocs()[ws_1.getActive()] && ws_1.hasEditorCanvas(ws_1.getDocs()[ws_1.getActive()])) {
     analysisViewDoc = "";
-    setTimeout(() => renderCanvas(), 40);
+    setTimeout(() => renderCanvas(), 340);
 } ws_1.persist(); }
 /* ---------- tool running ---------- */
 
 /* main.ts:2378-2378 */
 function syncToolButtons() { const d = ws_1.getActive() >= 0 ? ws_1.D() : null; document.querySelectorAll("[data-tool]").forEach(b => { const i = +b.getAttribute("data-tool"); const on = !!d && ws_1.toolActive(d, i); b.classList.toggle("on", on); b.classList.toggle("off", !on); b.title = on ? "Applied — click to remove this improvement" : "Available — click to apply this improvement"; }); }
+
+function syncStudioControls() {
+    const strategic = ws_1.getActive() === -1;
+    const all = dom_1.$("btnAll");
+    const download = dom_1.$("btnDownload");
+    const toolbar = document.querySelector(".analysisToolbar");
+    if (all) {
+        all.textContent = strategic ? "Apply across workflows" : "Apply all improvements";
+        all.title = strategic ? "Apply all six checks to every open workflow" : "Apply all six checks to this workflow";
+    }
+    if (download)
+        download.textContent = strategic ? "Export summary" : "Download";
+    ["btnAdd", "btnFill", "btnEstimate", "btnSaveStudio"].forEach(id => {
+        const control = dom_1.$(id);
+        if (control)
+            control.hidden = strategic;
+    });
+    if (toolbar)
+        toolbar.classList.toggle("strategicMode", strategic);
+}
 
 /* main.ts:2380-2411 */
 function runTool(i) {
@@ -1512,18 +1695,90 @@ function runTool(i) {
 }
 
 /* main.ts:2412-2424 */
-function applyAll() { if (ws_1.getActive() < 0) {
-    flashTools("Open or create a workflow first.");
-    return;
-} const d = ws_1.D(); if (d.wf.states.length < 2) {
-    flashTools("Add a few states first — drag chips onto the canvas, then run the tools.");
-    return;
-} for (let i = 0; i < 6; i++) {
-    computeTool(d, i);
-    for (const id of d.toolIds[i])
-        d.applied.add(id);
-} ws_1.setLastTool(-1); ws_1.rebuild(d); renderCanvas(); renderTools(); syncToolButtons(); if (ws_1.isPanelHidden())
-    togglePanel(); showTab("analysis"); ws_1.persist(); auth_1.logHistory("tool", "Ran all six tools"); }
+function applyAll() {
+    if (ws_1.getActive() === -1) {
+        let changed = 0;
+        ws_1.getDocs().forEach(d => {
+            if (!d.wf || d.wf.states.length < 2)
+                return;
+            for (let i = 0; i < 6; i++) {
+                computeTool(d, i);
+                for (const id of d.toolIds[i])
+                    d.applied.add(id);
+            }
+            ws_1.rebuild(d);
+            changed += 1;
+        });
+        if (!changed) {
+            flashTools("Add at least two states to a workflow before running portfolio analysis.");
+            return;
+        }
+        ws_1.setLastTool(-1);
+        ws_1.persist();
+        renderSigma();
+        syncToolButtons();
+        auth_1.logHistory("tool", "Applied all six tools across " + changed + " workflows");
+        return;
+    }
+    if (ws_1.getActive() < 0) {
+        flashTools("Open or create a workflow first.");
+        return;
+    }
+    const d = ws_1.D();
+    if (d.wf.states.length < 2) {
+        flashTools("Add a few states first — drag chips onto the canvas, then run the tools.");
+        return;
+    }
+    for (let i = 0; i < 6; i++) {
+        computeTool(d, i);
+        for (const id of d.toolIds[i])
+            d.applied.add(id);
+    }
+    ws_1.setLastTool(-1);
+    ws_1.rebuild(d);
+    renderCanvas();
+    renderTools();
+    syncToolButtons();
+    if (ws_1.isPanelHidden())
+        togglePanel();
+    showTab("analysis");
+    ws_1.persist();
+    auth_1.logHistory("tool", "Ran all six tools");
+}
+
+function downloadCurrent() {
+    let payload, filename, historyLabel;
+    if (ws_1.getActive() === -1) {
+        const rows = strategicRows().map(r => ({
+            workflow: r.name,
+            states: r.stateCount,
+            transitions: r.transitionCount,
+            findings: r.findings,
+            analysis_coverage_percent: r.coverage,
+            opportunity_cost_illustrative: r.opportunityCost,
+            opportunity_minutes_illustrative: r.opportunityTime,
+            applied_cost_illustrative: r.appliedCost,
+            applied_minutes_illustrative: r.appliedTime
+        }));
+        payload = { generated_at: new Date().toISOString(), methodology: "Savings are assumption-based; structural findings are certified per workflow.", workflows: rows };
+        filename = "plumbline-strategic-value.json";
+        historyLabel = "Exported Strategic Value summary";
+    }
+    else {
+        if (ws_1.getActive() < 0)
+            return;
+        payload = ws_1.unified(ws_1.D());
+        filename = (ws_1.D().wf.id || "workflow") + ".json";
+        historyLabel = "Downloaded ‘" + ws_1.D().name + "’ JSON with layout/meta";
+    }
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const a = dom_1.el("a", { href: url, download: filename });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    auth_1.logHistory("download", historyLabel);
+}
 /* ---------- commit + full render ---------- */
 
 /* main.ts:2425-2425 */
@@ -1544,6 +1799,7 @@ function init() {
     /* setupEditorSync() moved to editor.ts init(), called from ui-boot:
        the listener must exist from boot, not from a screen mount. */
     setupAnalysisPanZoom();
+    dom_1.$("results").addEventListener("load", resizeResultsFrame);
     window.addEventListener("resize", () => { if (ws_1.getActive() >= 0 && ws_1.getDocs()[ws_1.getActive()] && ws_1.hasEditorCanvas(ws_1.getDocs()[ws_1.getActive()])) {
         analysisViewDoc = "";
         renderCanvas();
@@ -1581,21 +1837,7 @@ function init() {
     } ws_1.estimate(d); ws_1.resetTools(d); full(); });
     dom_1.$("btnAll").addEventListener("click", applyAll);
     dom_1.$("btnLoadJson").addEventListener("click", loadJson);
-    dom_1.$("btnDownload").addEventListener("click", () => { if (ws_1.getActive() < 0)
-        return; const blob = new Blob([JSON.stringify(ws_1.unified(ws_1.D()), null, 2)], { type: "application/json" }); const a = dom_1.el("a", { href: URL.createObjectURL(blob), download: (ws_1.D().wf.id || "workflow") + ".json" }); document.body.append(a); a.click(); a.remove(); auth_1.logHistory("download", "Downloaded “" + ws_1.D().name + "” JSON with layout/meta"); });
-    { const lb = dom_1.$("btnLogin"); if (lb) lb.addEventListener("click", () => auth_1.showAuth(true)); }
-    { const hl = dom_1.$("homeLogin"); if (hl) hl.addEventListener("click", () => auth_1.showAuth(true)); }
-    { const hg = dom_1.$("homeGuest"); if (hg) hg.addEventListener("click", () => { /* Login as Guest: intentionally does nothing for the moment (Prompt1) */ }); }
-    { const hm = dom_1.$("homeMaintenance"); if (hm) hm.addEventListener("click", () => { /* Superuser Maintenance: intentionally does nothing for now (Prompt1) */ }); }
-    window.plumblineShowAuth = (open = true) => auth_1.showAuth(open);
-    dom_1.$("btnSaveWorkflow").addEventListener("click", auth_1.saveCurrentWorkflow);
-    dom_1.$("btnSavedWorkflows").addEventListener("click", () => auth_1.showAuth(true));
-    dom_1.$("authClose").addEventListener("click", () => auth_1.showAuth(false));
-    dom_1.$("btnSignIn").addEventListener("click", () => { auth_1.signIn(); });
-    dom_1.$("btnCreateUser").addEventListener("click", () => { auth_1.createUser(); });
-    dom_1.$("btnSignOut").addEventListener("click", auth_1.signOut);
-    dom_1.$("btnUpdateProfile").addEventListener("click", auth_1.updateProfile);
-    { const pwb = document.getElementById("btnChangePw"); if (pwb) pwb.addEventListener("click", auth_1.changePassword); }
+    dom_1.$("btnDownload").addEventListener("click", downloadCurrent);
     dom_1.$("fileWf").addEventListener("change", e => { var _a; const f = (_a = e.target.files) === null || _a === void 0 ? void 0 : _a[0]; if (f)
         f.text().then(txt => ws_1.ingest(ws_1.safe(txt), "Upload")); });
     document.querySelectorAll("[data-tool]").forEach(b => b.addEventListener("click", () => runTool(+b.getAttribute("data-tool"))));
@@ -1624,7 +1866,6 @@ function init() {
         const r = cvEl.getBoundingClientRect();
         addChip(spec, ev.clientX - r.left, ev.clientY - r.top);
     });
-    auth_1.restoreSession();
     ws_1.restoreState();
     applyPanel();
     full();
@@ -1681,7 +1922,6 @@ exports["default"] = {
   mount: function (outlet, params, ctx) {
     this.ctx = ctx;
     CTX = ctx;
-    CTX = ctx;
 
     /* Let editor.ts reach this screen without requiring it (avoids a cycle). */
     if (ed_1.setAnalysisHooks) ed_1.setAnalysisHooks({
@@ -1699,9 +1939,13 @@ exports["default"] = {
     if (!initialised) {
       initialised = true;
       init();
-      /* The workflow library — same panel the Editor opens. */
-      var rs = dom_1.$("btnReadSaveStudio");
-      if (rs) rs.addEventListener("click", function () {
+      /* Saving and exploring use the same focused dialogs as the Editor. */
+      var save = dom_1.$("btnSaveStudio");
+      if (save) save.addEventListener("click", function () {
+        if (CTX && CTX.library) CTX.library.openSave({ mode: "analysis" });
+      });
+      var explore = dom_1.$("btnExploreSavedStudio");
+      if (explore) explore.addEventListener("click", function () {
         if (CTX && CTX.library) CTX.library.open({ mode: "analysis" });
       });
     }

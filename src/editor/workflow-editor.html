@@ -233,6 +233,8 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) var(--resize-handle-width, 8px) var(--side-width, 360px);
       gap: 0;
+      transition: grid-template-columns 0.32s cubic-bezier(.22, .61, .36, 1);
+      will-change: grid-template-columns;
     }
 
     .sideResizeHandle {
@@ -309,7 +311,13 @@
       grid-template-columns: minmax(0, 1fr) var(--resize-handle-width, 8px) 0;
     }
 
-    .main.sideCollapsed .side { display: none; }
+    .main.sideCollapsed .side {
+      opacity: 0;
+      transform: translateX(28px);
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity .2s ease, transform .32s cubic-bezier(.22, .61, .36, 1), visibility 0s .32s;
+    }
     .main.sideCollapsed .sideResizeHandle { cursor: default; }
     .main.sideCollapsed .sideResizeHandle::after { display: none; }
 
@@ -833,6 +841,14 @@
       padding: 18px;
       background: #ffffff;
       border-left: 0;
+      opacity: 1;
+      transform: translateX(0);
+      visibility: visible;
+      transition: opacity .22s ease, transform .32s cubic-bezier(.22, .61, .36, 1), visibility 0s;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .main, .side { transition-duration: .01ms !important; }
     }
 
     .side h2 {
@@ -1494,6 +1510,88 @@
       font-weight: 700;
     }
 
+    .newProcessOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, .56);
+      backdrop-filter: blur(5px);
+    }
+    .newProcessOverlay[hidden] { display: none !important; }
+    .newProcessDialog {
+      width: min(680px, 96vw);
+      max-height: 92vh;
+      overflow: auto;
+      border: 1px solid #cbd5e1;
+      border-radius: 18px;
+      background: #fff;
+      color: #0f172a;
+      box-shadow: 0 28px 80px rgba(15, 23, 42, .30);
+    }
+    .newProcessHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 22px 24px 14px; border-bottom: 1px solid #e2e8f0; }
+    .newProcessHeader h2 { margin: 2px 0 5px; font-size: 24px; line-height: 1.1; }
+    .newProcessHeader p { margin: 0; color: #64748b; font-size: 13px; }
+    .newProcessEyebrow { color: #0f766e; font-size: 10px; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
+    .newProcessClose { width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 50%; background: #fff; color: #334155; font-size: 18px; }
+    .newProcessForm { padding: 20px 24px 24px; }
+    .newProcessGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .newProcessField { display: grid; gap: 6px; margin: 0; color: #334155; font-size: 12px; font-weight: 800; }
+    .newProcessField.wide { grid-column: 1 / -1; }
+    .newProcessField input,.newProcessField textarea,.newProcessField select { width: 100%; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; color: #0f172a; padding: 10px 11px; font: 14px/1.35 Arial, sans-serif; }
+    .newProcessField textarea { min-height: 76px; resize: vertical; }
+    .newProcessField input:focus,.newProcessField textarea:focus,.newProcessField select:focus { outline: 3px solid rgba(15,118,110,.14); border-color: #0f766e; }
+    .newProcessSection { grid-column: 1 / -1; margin: 5px 0 -3px; padding-top: 15px; border-top: 1px solid #e2e8f0; color: #0f766e; font-size: 10px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+    .newProcessError { margin-top: 14px; border: 1px solid #fecaca; border-radius: 8px; background: #fef2f2; color: #991b1b; padding: 9px 11px; font-size: 12px; }
+    .newProcessActions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+    .newProcessActions button { min-width: 110px; }
+    .newProcessActions .createPrimary { border-color: #0f766e; background: #0f766e; color: #fff; }
+    @media(max-width:620px) { .newProcessGrid { grid-template-columns: 1fr; } .newProcessField.wide,.newProcessSection { grid-column: 1; } }
+
+    html[data-theme="dark"] {
+      --bg: #0f1722;
+      --ink: #e8edf4;
+      --muted: #aeb9c6;
+      --line: #344252;
+      --panel: #172231;
+      --accent: #58c5b4;
+      --shadow: 0 10px 24px rgba(0,0,0,.28);
+      color-scheme: dark;
+    }
+    html[data-theme="dark"] body,
+    html[data-theme="dark"] .topbar,
+    html[data-theme="dark"] .canvasHud,
+    html[data-theme="dark"] .side,
+    html[data-theme="dark"] .pageNav { background:#172231;color:var(--ink);border-color:var(--line) }
+    html[data-theme="dark"] .board { background:radial-gradient(circle at 24px 24px,rgba(88,197,180,.20) 1px,transparent 1.8px) 0 0/34px 34px,linear-gradient(180deg,#111c29 0%,#0f1722 100%) }
+    html[data-theme="dark"] .title h1,
+    html[data-theme="dark"] button,
+    html[data-theme="dark"] input,
+    html[data-theme="dark"] select,
+    html[data-theme="dark"] textarea { color:var(--ink) }
+    html[data-theme="dark"] button,
+    html[data-theme="dark"] input,
+    html[data-theme="dark"] select,
+    html[data-theme="dark"] textarea,
+    html[data-theme="dark"] .controlGroup,
+    html[data-theme="dark"] .zoomControls,
+    html[data-theme="dark"] .viewOptions,
+    html[data-theme="dark"] .typeTools,
+    html[data-theme="dark"] .kpiCard,
+    html[data-theme="dark"] .emptyDashboardRow,
+    html[data-theme="dark"] .dashboardNote,
+    html[data-theme="dark"] .depList,
+    html[data-theme="dark"] .ctxMenu,
+    html[data-theme="dark"] .inspectorActionBar { background:#111c29;border-color:var(--line);color:var(--ink) }
+    html[data-theme="dark"] .userBadge { background:#1d2a3a;border-color:var(--line);color:var(--muted) }
+    html[data-theme="dark"] .userBadge.signedIn { background:#183b36;color:var(--accent) }
+    html[data-theme="dark"] .newProcessDialog { background:#172231;color:var(--ink);border-color:var(--line) }
+    html[data-theme="dark"] .newProcessHeader,.newProcessSection { border-color:var(--line) }
+    html[data-theme="dark"] .newProcessHeader p,.newProcessField { color:var(--muted) }
+    html[data-theme="dark"] .newProcessField input,html[data-theme="dark"] .newProcessField textarea,html[data-theme="dark"] .newProcessField select,html[data-theme="dark"] .newProcessClose { background:#111c29;color:var(--ink);border-color:var(--line) }
+
   </style>
 </head>
 <body>
@@ -1501,7 +1599,7 @@
     <header class="topbar">
       <div class="titleRow">
         <div class="title">
-          <h1><span class="editorWordmark">plum<b>b</b>line</span> Workflow Editor</h1>
+          <h1>Workflow Editor</h1>
           <p id="processDescription">Load a process, then edit categories, named boxes, connectors, and per-box task cost/time. Cost/time here is only for carrying out the task in each box.</p>
         </div>
       </div>
@@ -1509,7 +1607,8 @@
         <div class="controls" aria-label="Visualizer controls">
           <input id="processKey" type="hidden" value="ecommerce_order">
           <div class="controlGroup presetGroup" aria-label="Process controls">
-            <button id="btnReadSave" type="button" title="Open the workflow library">Read/Save</button>
+            <button id="btnSaveProcess" type="button" title="Save this workflow">Save</button>
+            <button id="btnExploreSaved" type="button" title="Explore saved and example workflows">Explore Saved</button>
             <select id="exampleSelect" aria-label="Example process" hidden></select>
             <button id="createProcess">Create New</button>
           </div>
@@ -1569,6 +1668,28 @@
         <p class="muted">Use a sample preset, create a new process, or import JSON.</p>
       </aside>
     </main>
+  </div>
+
+  <div id="newProcessOverlay" class="newProcessOverlay" hidden>
+    <section class="newProcessDialog" role="dialog" aria-modal="true" aria-labelledby="newProcessTitle">
+      <div class="newProcessHeader">
+        <div><div class="newProcessEyebrow">New workflow</div><h2 id="newProcessTitle">Create a blank process</h2><p>Set the basics now. You can change every detail later in the editor.</p></div>
+        <button id="newProcessClose" class="newProcessClose" type="button" aria-label="Close new workflow dialog">×</button>
+      </div>
+      <form id="newProcessForm" class="newProcessForm">
+        <div class="newProcessGrid">
+          <label class="newProcessField wide">Process name<input id="newProcessName" required maxlength="100" placeholder="Example: Customer onboarding"></label>
+          <label class="newProcessField">Business area<input id="newProcessDomain" maxlength="100" placeholder="Example: Operations"></label>
+          <label class="newProcessField">Owner or team<input id="newProcessOwner" maxlength="100" placeholder="Example: Customer Success"></label>
+          <label class="newProcessField wide">Description<textarea id="newProcessDescription" maxlength="500" placeholder="What should this process accomplish?"></textarea></label>
+          <div class="newProcessSection">Starting category</div>
+          <label class="newProcessField">Category name<input id="newProcessCategory" maxlength="100" value="New Category"></label>
+          <label class="newProcessField">Currency<select id="newProcessCurrency"><option value="USD">USD — US Dollar</option><option value="EUR">EUR — Euro</option><option value="GBP">GBP — British Pound</option><option value="CAD">CAD — Canadian Dollar</option><option value="AUD">AUD — Australian Dollar</option></select></label>
+        </div>
+        <div id="newProcessError" class="newProcessError" hidden></div>
+        <div class="newProcessActions"><button id="newProcessCancel" type="button">Cancel</button><button class="createPrimary" type="submit">Create workflow</button></div>
+      </form>
+    </section>
   </div>
 
   <script>
@@ -2731,17 +2852,17 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       syncCloudKeyFromCurrent();
     }
 
-    function makeBlankProcess(name = "New Process") {
+    function makeBlankProcess(name = "New Process", options = {}) {
       const processKey = uniqueProcessKey(slugifyKey(name));
       return {
         process: {
           process_key: processKey,
           name,
-          process_domain: "",
-          owner_team: "",
-          description: "A blank process. Add categories, boxes, and connections to build the flow.",
+          process_domain: options.domain || "",
+          owner_team: options.owner || "",
+          description: options.description || "A blank process. Add categories, boxes, and connections to build the flow.",
           naming_convention: "Use readable category names, short box keys, and clear connection event names.",
-          default_currency: "USD",
+          default_currency: options.currency || "USD",
           is_custom_process: true,
           infinite_canvas: true
         },
@@ -2750,8 +2871,8 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
             process_key: processKey,
             stage_key: "category_01",
             stage_order: 1,
-            name: "New Category",
-            owner_role: "Owner",
+            name: options.category || "New Category",
+            owner_role: options.owner || "Owner",
             visual_color: "#2563eb",
             description: "Start building this part of the process here.",
             manual_x: 58,
@@ -2764,19 +2885,50 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       };
     }
 
+    const newProcessOverlay = document.getElementById("newProcessOverlay");
+    const newProcessForm = document.getElementById("newProcessForm");
+    const newProcessName = document.getElementById("newProcessName");
+    const newProcessError = document.getElementById("newProcessError");
+
+    function closeNewProcessDialog() {
+      newProcessOverlay.hidden = true;
+      newProcessError.hidden = true;
+      newProcessError.textContent = "";
+      syncCurrentProcessOption();
+    }
+
     function createNewProcess() {
-      const name = prompt("Name the new process:", "New Process");
-      if (name === null) {
-        syncCurrentProcessOption();
+      newProcessForm.reset();
+      document.getElementById("newProcessCategory").value = "New Category";
+      document.getElementById("newProcessCurrency").value = "USD";
+      newProcessError.hidden = true;
+      newProcessOverlay.hidden = false;
+      setTimeout(() => newProcessName.focus(), 0);
+      return false;
+    }
+
+    function commitNewProcess() {
+      const name = newProcessName.value.trim();
+      if (!name) {
+        newProcessError.textContent = "Enter a process name to continue.";
+        newProcessError.hidden = false;
+        newProcessName.focus();
         return false;
       }
       selected = { type: null, key: null };
       pendingConnectionFrom = null;
       spacingExpandedApplied = false;
       updateAddConnectionButton();
-      currentData = makeBlankProcess(name.trim() || "New Process");
+      currentData = makeBlankProcess(name, {
+        domain: document.getElementById("newProcessDomain").value.trim(),
+        owner: document.getElementById("newProcessOwner").value.trim(),
+        description: document.getElementById("newProcessDescription").value.trim(),
+        category: document.getElementById("newProcessCategory").value.trim() || "New Category",
+        currency: document.getElementById("newProcessCurrency").value || "USD"
+      });
       refreshDerivedFields(currentData);
       document.getElementById("processKey").value = currentData.process.process_key;
+      newProcessOverlay.hidden = true;
       render(currentData);
       resetUndoRedoHistory();
       syncCurrentProcessOption(true);
@@ -2784,6 +2936,12 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       setStatus(`Created blank process "${currentData.process.name}".`);
       return true;
     }
+
+    newProcessForm.addEventListener("submit", event => { event.preventDefault(); commitNewProcess(); });
+    document.getElementById("newProcessCancel").addEventListener("click", closeNewProcessDialog);
+    document.getElementById("newProcessClose").addEventListener("click", closeNewProcessDialog);
+    newProcessOverlay.addEventListener("click", event => { if (event.target === newProcessOverlay) closeNewProcessDialog(); });
+    document.addEventListener("keydown", event => { if (event.key === "Escape" && !newProcessOverlay.hidden) closeNewProcessDialog(); });
 
     function loadExample(exampleKey) {
       selected = { type: null, key: null };
@@ -5985,7 +6143,10 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     if (signupBtnEl) signupBtnEl.addEventListener("click", () => requestAuth("signup"));
     window.addEventListener("message", authEvent => {
       const d = authEvent.data;
-      if (d && d.type === "plumbline-auth-state") setEditorUser(d.user || "");
+      if (d && d.type === "plumbline-auth-state") {
+        setEditorUser(d.user || "");
+        document.documentElement.setAttribute("data-theme", d.darkMode ? "dark" : "light");
+      }
     });
 
     document.getElementById("undoEdit").addEventListener("click", undoLastEdit);
@@ -6013,17 +6174,25 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
         setEditMode(false);
       }
     });
-    /* Read/Save opens the workflow library, which lives in the parent document
-       because that is where the session and the data gateway are. The editor's
-       only job is to say the button was pressed. Mirrors requestAuth(). */
-    document.getElementById("btnReadSave").addEventListener("click", function () {
+    /* Saving and exploring live in the parent document, where the session and
+       data gateway are available. The editor only announces the chosen path. */
+    document.getElementById("btnSaveProcess").addEventListener("click", function () {
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "plumbline-save", mode: "editor" }, "*");
+          return;
+        }
+      } catch (err) { }
+      setStatus("Saving is only available inside Plumbline Studio.");
+    });
+    document.getElementById("btnExploreSaved").addEventListener("click", function () {
       try {
         if (window.parent && window.parent !== window) {
           window.parent.postMessage({ type: "plumbline-library", mode: "editor" }, "*");
           return;
         }
       } catch (err) { }
-      setStatus("Read/Save is only available inside Plumbline Studio.");
+      setStatus("Saved workflows are only available inside Plumbline Studio.");
     });
 
     document.getElementById("addStage").addEventListener("click", addStage);
@@ -6158,7 +6327,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       setStatus(`Staged inspector update. Click Accept Pending to commit: ${describeInspectorForm(form)}.`);
     }, true);
 
-    new MutationObserver(() => ensureInspectorActionBar()).observe(details, { childList: true, subtree: false });
+    if (details && details.nodeType === 1) {
+      ensureInspectorActionBar();
+    }
 
 
     initializeSidePanelResize();

@@ -1,7 +1,8 @@
 # Plumbline API (server)
 
 The backend for two of Plumbline's five layers, over the **production
-database schema** (001 base + migration 002 + security patch 003):
+database schema** (001 base + migration 002 + security patch 003 + account
+settings migration 004):
 
 - **Data interaction layer** — the `PlumblineData` gateway talks here: auth
   (bcrypt, signed httpOnly session cookie, hashed remember tokens), the atomic
@@ -47,11 +48,12 @@ The front-end finds the API through `window.PLUMBLINE_API` (set in
 | Method | Path | Purpose |
 |---|---|---|
 | GET  | `/api/health` | DB reachability + schema tag |
-| POST | `/api/signup` | create user (+ demographics; min 8-char password) |
+| POST | `/api/signup` | create user from email, optional username, and min 8-char password |
 | POST | `/api/login` · `/api/logout` | session cookie; `remember:true` adds a hashed remember token |
 | GET  | `/api/session` | signed-in state + capabilities (honours `revoked_at`, remember fallback) |
 | POST | `/api/password` | self-service password change → `admin_reset_password()` (atomic, audited) |
 | GET/POST | `/api/profile` | demographics |
+| GET/PATCH | `/api/settings` | account-backed application preferences (including dark mode) |
 | GET/POST | `/api/groups` · PATCH/DELETE `/api/groups/:id` | workflow folders (`v_workflow_tree`) |
 | GET  | `/api/workflows` | list (current version per workflow) |
 | POST | `/api/workflows` | save: new name → workflow + ORIGINAL v1; existing name → next EDIT version |
@@ -80,6 +82,7 @@ The front-end finds the API through `window.PLUMBLINE_API` (set in
 migrations/001_init.sql               original base schema
 migrations/002_production_schema.sql  = plumbline_supabase_setup.sql (001 + 002)
 migrations/003_security_patch.sql     = plumbline_supabase_patch_003.sql
+migrations/004_user_settings.sql      account-backed JSONB preferences
 src/db.js        Postgres pool + RLS-context transactions (SET LOCAL app.user_id)
 src/normalize.js snapshot → normalized FSM tables (both snapshot dialects)
 src/index.js     Express app: auth, folders, versioned workflows, analyses,

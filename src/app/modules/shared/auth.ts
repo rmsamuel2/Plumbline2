@@ -1,22 +1,4 @@
-/* ============================================================================
- * studio/shared/auth.ts — session, account modal, saved workflows, history
- * ----------------------------------------------------------------------------
- * Phase 1, step 3. Declarations MOVED VERBATIM from studio/main.ts
- * (ui-modules.gen.js at commit 462ebb7); original line ranges noted above each.
- * Only two kinds of edit were made:
- *   - references to dom/workspace helpers were prefixed dom_1. / ws_1.
- *   - `active` became ws_1.getActive()
- *
- * Auth is a SERVICE, not a screen. Its markup (#authModal) lives in shell.html
- * outside the router outlet, because it is opened from Home, from the Studio
- * toolbar, and from the editor iframe by postMessage. No module owns it.
- *
- * KNOWN DEFECT, DELIBERATELY PRESERVED: signIn() and createUser() lowercase
- * the username before sending it, while the server matches exactly. An account
- * created in SQL with a capital letter can never sign in. This is moved
- * unchanged - fixing it inside a refactor would make the refactor unreviewable.
- * Track it separately.
- * ==========================================================================*/
+/* Account/session service, auth gate, workflow account data, and settings. */
 __PL.define("studio/shared/auth.ts", function (require, exports, module) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -24,353 +6,447 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var dom_1 = require("studio/shared/dom.ts");
 var ws_1  = require("studio/shared/workspace.ts");
 
-/* Injected by init(); avoids reading window.PlumblineData from module code. */
 var CTX = null;
+var currentUser = null;
+var guestMode = false;
+var GUEST_SETTINGS_KEY = "plumbline_guest_settings";
+var currentSettings = loadGuestSettings();
+var accountWorkflows = [];
+var accountHistory = [];
+var profileSaveTimer = null;
 
-
-
-/* main.ts:21-21 */
-let currentUser = null;
-
-/* main.ts:1951-1951 */
-let accountWorkflows = [];   // list cache for the account modal
-
-/* main.ts:1952-1952 */
-let accountHistory = [];     // history cache for the account modal
-
-/* main.ts:1950-1950 */
 function PData() { return window.PlumblineData; }
-
-/* main.ts:1953-1957 */
-function dataProblem(e) {
-    const status = document.getElementById("authStatus");
-    if (status)
-        status.textContent = String((e && e.message) || e);
+function loadGuestSettings() {
+  try {
+    var saved = JSON.parse(localStorage.getItem(GUEST_SETTINGS_KEY) || "{}");
+    return { darkMode: !!saved.darkMode };
+  } catch (e) { return { darkMode: false }; }
+}
+function saveGuestSettings(settings) {
+  try { localStorage.setItem(GUEST_SETTINGS_KEY, JSON.stringify({ darkMode: !!settings.darkMode })); }
+  catch (e) { }
+}
+function byId(id) { return document.getElementById(id); }
+function authVal(id) { var n = byId(id); return n ? (n.value || "").trim() : ""; }
+function authChecked(id) { var n = byId(id); return !!(n && n.checked); }
+function blankProfile() { return { displayName: "", email: "", team: "", role: "", region: "" }; }
+function profileFromInputs() {
+  return {
+    displayName: authVal("settings_displayName"),
+    team: authVal("settings_team"),
+    role: authVal("settings_role"),
+    region: authVal("settings_region")
+  };
 }
 
-/* main.ts:1958-1958 */
-function authVal(id) { return (dom_1.$((id)).value || "").trim(); }
+function setMessage(id, message, isError) {
+  var n = byId(id);
+  if (!n) return;
+  n.textContent = String(message || "");
+  n.hidden = !message;
+  n.classList.toggle("bad", !!isError);
+}
+function dataProblem(e, targetId) {
+  setMessage(targetId || "authStatus", String((e && e.message) || e), true);
+}
 
-/* main.ts:1959-1959 */
-function authChecked(id) { return !!(dom_1.$((id)).checked); }
+function hasAccess() { return guestMode || !!currentUser; }
+function isGuest() { return guestMode && !currentUser; }
 
-/* main.ts:1960-1960 */
-function blankProfile() { return { displayName: "", email: "", team: "", role: "", region: "" }; }
-
-/* main.ts:1961-1961 */
-function profileFromInputs() { return { displayName: authVal("prof_displayName"), email: authVal("prof_email"), team: authVal("prof_team"), role: authVal("prof_role"), region: authVal("prof_region") }; }
-
-/* main.ts:1962-1971 */
 function broadcastAuthToEditor() {
-    try {
-        const f = document.getElementById("workflowEditorFrame");
-        if (f && f.contentWindow)
-            f.contentWindow.postMessage({ type: "plumbline-auth-state",
-                user: currentUser ? (currentUser.displayName || currentUser.username || currentUser.email || "") : "" }, "*");
+  try {
+    var f = byId("workflowEditorFrame");
+    if (f && f.contentWindow) {
+      f.contentWindow.postMessage({
+        type: "plumbline-auth-state",
+        user: currentUser ? (currentUser.displayName || currentUser.username || currentUser.email || "") : (guestMode ? "Guest" : ""),
+        guest: guestMode,
+        darkMode: !!currentSettings.darkMode
+      }, "*");
     }
-    catch (e) { }
+  } catch (e) { }
 }
 window.plumblineBroadcastAuth = broadcastAuthToEditor;
 
-/* main.ts:1972-1978 */
+function applyTheme(darkMode) {
+  currentSettings.darkMode = !!darkMode;
+  document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
+  broadcastAuthToEditor();
+}
+
+function renderAccessState() {
+  var unlocked = hasAccess();
+  document.body.classList.toggle("appUnlocked", unlocked);
+  document.body.classList.toggle("accountSession", !!currentUser);
+  document.querySelectorAll("[data-protected-nav]").forEach(function (n) { n.hidden = !unlocked; });
+  document.querySelectorAll("[data-account-only]").forEach(function (n) { n.hidden = !currentUser; });
+  document.querySelectorAll("[data-anonymous-only]").forEach(function (n) { n.hidden = !!currentUser; });
+  document.querySelectorAll("[data-signed-in-only]").forEach(function (n) { n.hidden = !currentUser; });
+  document.querySelectorAll("[data-session-badge]").forEach(function (n) { n.hidden = !unlocked; });
+  var gate = byId("homeGate"), ready = byId("homeUnlocked");
+  if (gate) gate.hidden = unlocked;
+  if (ready) ready.hidden = !unlocked;
+
+  var label = currentUser
+    ? (currentUser.displayName || currentUser.username || currentUser.email)
+    : (guestMode ? "Guest" : "not signed in");
+  document.querySelectorAll(".navUserBadge").forEach(function (n) {
+    n.textContent = label;
+    n.classList.toggle("on", unlocked);
+  });
+  var b = byId("userBadge");
+  if (b) { b.textContent = label; b.classList.toggle("on", unlocked); }
+  broadcastAuthToEditor();
+}
+function renderUserBadge() { renderAccessState(); }
+
 function logHistory(action, detail) {
-    if (!currentUser)
-        return;
-    // Fire-and-forget append to the database's activity_log.
-    try { PData().appendHistory(action, { detail }).catch(() => { }); }
-    catch (e) { }
+  if (!currentUser) return;
+  try { PData().appendHistory(action, { detail: detail }).catch(function () { }); }
+  catch (e) { }
 }
 
-/* main.ts:1979-1996 */
-function renderUserBadge() {
-    const label = currentUser ? (currentUser.displayName || currentUser.username || currentUser.email) : "not signed in";
-    const b = document.getElementById("userBadge");
-    if (b) {
-        b.textContent = label;
-        b.classList.toggle("on", !!currentUser);
-    }
-    // Logged-in name in the upper right of the Editor and Analysis pages.
-    document.querySelectorAll(".navUserBadge").forEach(n => {
-        n.textContent = label;
-        n.classList.toggle("on", !!currentUser);
-    });
-    // Landing page: superusers get a Maintenance button (stub for now).
-    const maint = document.getElementById("homeMaintenance");
-    if (maint)
-        maint.style.display = (currentUser && String(currentUser.userType || "").toLowerCase() === "superuser") ? "" : "none";
-    broadcastAuthToEditor();
+function showAuth(open, mode) {
+  if (open === undefined) open = true;
+  var m = byId("authModal");
+  if (!m) return;
+  m.style.display = open ? "flex" : "none";
+  if (!open) return;
+  var authMode = currentUser ? "account" : (mode === "signup" ? "signup" : "login");
+  m.setAttribute("data-auth-mode", authMode);
+  renderAuth(authMode);
+  var focusId = mode === "signup" ? "signupEmail" : "authUser";
+  var focusNode = byId(focusId);
+  if (focusNode && !currentUser) setTimeout(function () { focusNode.focus(); }, 0);
 }
 
-/* main.ts:1997-1998 */
-function showAuth(open = true) { const m = dom_1.$("authModal"); m.style.display = open ? "flex" : "none"; if (open)
-    renderAuth(); }
-
-/* main.ts:1999-2009 */
 async function refreshAccountData() {
-    if (!currentUser)
-        return;
-    try {
-        const [wfs, hist] = await Promise.all([PData().listWorkflows(), PData().listHistory()]);
-        accountWorkflows = Array.isArray(wfs) ? wfs : [];
-        accountHistory = Array.isArray(hist) ? hist : [];
-        paintAccountLists();
-    }
-    catch (e) { dataProblem(e); }
-}
-
-/* main.ts:2010-2027 */
-function paintAccountLists() {
-    const saveBox = dom_1.$("savedList");
-    saveBox.innerHTML = "";
-    if (!currentUser) {
-        saveBox.append(dom_1.el("p", { class: "hint" }, "Sign in to see saved workflows."));
-    }
-    else if (!accountWorkflows.length) {
-        saveBox.append(dom_1.el("p", { class: "hint" }, "No saved workflows yet. Use Save workflow while signed in."));
-    }
-    else
-        accountWorkflows.forEach(w => { const row = dom_1.el("div", { class: "saveditem" }); const when = new Date(w.savedAt).toLocaleString(); const tools = Array.isArray(w.tools) ? w.tools : []; row.append(dom_1.el("div", { class: "savedtitle" }, w.name + (w.versionNumber ? "  ·  v" + w.versionNumber : ""))); row.append(dom_1.el("div", { class: "saveddetail" }, when + " · tools: " + (tools.length ? tools.map(i => i + 1).join(", ") : "none"))); const load = dom_1.btn("Load", () => loadSavedWorkflow(w.id), "btn tiny"); row.append(load); const del = dom_1.btn("Delete", () => deleteSavedWorkflow(w.id, w.name), "btn tiny ghost"); row.append(del); saveBox.append(row); });
-    const hist = dom_1.$("historyList");
-    hist.innerHTML = "";
-    if (!currentUser)
-        hist.append(dom_1.el("p", { class: "hint" }, "History appears after sign-in."));
-    else
-        accountHistory.slice(0, 40).forEach(h => { const meta = h.meta || {}; const detail = meta.detail || meta.name || ""; const row = dom_1.el("div", { class: "histitem" }, dom_1.el("b", {}, h.action), (detail ? " — " + detail : "") + " · " + new Date(h.at).toLocaleString()); hist.append(row); });
-}
-
-/* main.ts:2028-2048 */
-function renderAuth() {
-    const title = dom_1.$("authTitle");
-    title.textContent = currentUser ? "Account — " + (currentUser.displayName || currentUser.username || currentUser.email) : "Sign in or create user";
-    const status = dom_1.$("authStatus");
-    if (!status.textContent)
-        status.textContent = currentUser
-            ? "Signed in. Your account, workflows, and history live in the Plumbline database."
-            : "Sign in to the Plumbline database, or create an account (passwords are bcrypt-hashed server-side).";
-    const rememberLogin = document.querySelector(".authremember");
-    if (rememberLogin)
-        rememberLogin.style.display = currentUser ? "none" : "inline-flex";
-    const pwRow = document.getElementById("authPwChange");
-    if (pwRow)
-        pwRow.style.display = currentUser ? "" : "none";
-    const p = currentUser || blankProfile();
-    ["displayName", "email", "team", "role", "region"].forEach(k => { const input = document.getElementById("prof_" + k); if (input)
-        input.value = p[k] || ""; });
+  if (!currentUser) return;
+  try {
+    var values = await Promise.all([PData().listWorkflows(), PData().listHistory()]);
+    accountWorkflows = Array.isArray(values[0]) ? values[0] : [];
+    accountHistory = Array.isArray(values[1]) ? values[1] : [];
     paintAccountLists();
-    if (currentUser)
-        refreshAccountData();
+  } catch (e) { dataProblem(e); }
 }
 
-/* main.ts:2049-2071 */
+function paintAccountLists() {
+  var saveBox = byId("savedList"), hist = byId("historyList");
+  if (!saveBox || !hist) return;
+  saveBox.innerHTML = "";
+  if (!currentUser) {
+    saveBox.append(dom_1.el("p", { class: "hint" }, "Sign in to see saved workflows."));
+  } else if (!accountWorkflows.length) {
+    saveBox.append(dom_1.el("p", { class: "hint" }, "No saved workflows yet."));
+  } else {
+    accountWorkflows.forEach(function (w) {
+      var row = dom_1.el("div", { class: "saveditem" });
+      var when = new Date(w.savedAt).toLocaleString();
+      var tools = Array.isArray(w.tools) ? w.tools : [];
+      row.append(dom_1.el("div", { class: "savedtitle" }, w.name + (w.versionNumber ? " · v" + w.versionNumber : "")));
+      row.append(dom_1.el("div", { class: "saveddetail" }, when + " · tools: " + (tools.length ? tools.map(function (i) { return i + 1; }).join(", ") : "none")));
+      row.append(dom_1.btn("Load", function () { loadSavedWorkflow(w.id); }, "btn tiny"));
+      row.append(dom_1.btn("Delete", function () { deleteSavedWorkflow(w.id, w.name); }, "btn tiny ghost"));
+      saveBox.append(row);
+    });
+  }
+  hist.innerHTML = "";
+  if (!currentUser) {
+    hist.append(dom_1.el("p", { class: "hint" }, "History appears after sign-in."));
+  } else if (!accountHistory.length) {
+    hist.append(dom_1.el("p", { class: "hint" }, "No account activity yet."));
+  } else {
+    accountHistory.slice(0, 40).forEach(function (h) {
+      var meta = h.meta || {}, detail = meta.detail || meta.name || "";
+      hist.append(dom_1.el("div", { class: "histitem" }, dom_1.el("b", {}, h.action),
+        (detail ? " — " + detail : "") + " · " + new Date(h.at).toLocaleString()));
+    });
+  }
+}
+
+function renderAuth(mode) {
+  var title = byId("authTitle"), entry = byId("authEntryPanels"), account = byId("authAccountPanel");
+  if (title) title.textContent = currentUser
+    ? "Account — " + (currentUser.displayName || currentUser.username || currentUser.email)
+    : (mode === "signup" ? "Welcome to Plumbline" : "Welcome back");
+  if (entry) entry.hidden = !!currentUser;
+  if (account) account.hidden = !currentUser;
+  if (currentUser) {
+    setMessage("authStatus", "Signed in. Workflows, history, and preferences are stored with your account.", false);
+    refreshAccountData();
+  } else {
+    setMessage("authStatus", "", false);
+    paintAccountLists();
+  }
+}
+
+async function loadSignedInAccount() {
+  currentUser = await PData().getProfile();
+  var s = await PData().session();
+  currentUser.userType = s.userType;
+  currentUser.capabilities = s.capabilities || [];
+  var saved = await PData().getSettings();
+  currentSettings = Object.assign({ darkMode: false }, saved || {});
+  guestMode = false;
+  applyTheme(currentSettings.darkMode);
+  renderAccessState();
+}
+
 async function createUser() {
-    const username = authVal("authUser").toLowerCase(), pw = dom_1.$(("authPass")).value;
-    if (!username || !pw) {
-        dom_1.$("authStatus").textContent = "Username and password are required.";
-        return;
-    }
-    try {
-        const prof = profileFromInputs();
-        const isEmail = username.indexOf("@") >= 0;
-        await PData().signup({ username: isEmail ? null : username, email: isEmail ? username : (prof.email || null),
-            password: pw, displayName: prof.displayName, team: prof.team, role: prof.role, region: prof.region });
-        await PData().login(username, pw, authChecked("authRemember"));
-        currentUser = await PData().getProfile();
-        const s = await PData().session();
-        currentUser.userType = s.userType;
-        currentUser.capabilities = s.capabilities || [];
-        dom_1.$("authStatus").textContent = "Created and signed in — account stored in the Plumbline database.";
-        logHistory("login", "Created account");
-        renderAuth();
-        renderUserBadge();
-    }
-    catch (e) { dataProblem(e); }
+  var email = authVal("signupEmail").toLowerCase();
+  var username = authVal("signupUsername").toLowerCase();
+  var pwNode = byId("signupPassword"), password = pwNode ? pwNode.value : "";
+  if (!email || email.indexOf("@") <= 0 || !password) {
+    setMessage("authStatus", "Email and password are required. Username is optional.", true);
+    return;
+  }
+  try {
+    await PData().signup({ email: email, username: username || null, password: password });
+    await PData().login(email, password, true);
+    await loadSignedInAccount();
+    logHistory("login", "Created account");
+    showAuth(false);
+    if (CTX) CTX.navigate("/editor");
+  } catch (e) { dataProblem(e); }
 }
 
-/* main.ts:2072-2086 */
 async function signIn() {
-    const username = authVal("authUser").toLowerCase(), pw = dom_1.$(("authPass")).value;
-    try {
-        await PData().login(username, pw, authChecked("authRemember"));
-        currentUser = await PData().getProfile();
-        const s = await PData().session();
-        currentUser.userType = s.userType;
-        currentUser.capabilities = s.capabilities || [];
-        dom_1.$("authStatus").textContent = "Signed in.";
-        logHistory("login", "Signed in");
-        renderAuth();
-        renderUserBadge();
-    }
-    catch (e) { dataProblem(e); }
+  var username = authVal("authUser").toLowerCase(), pwNode = byId("authPass");
+  var password = pwNode ? pwNode.value : "";
+  if (!username || !password) {
+    setMessage("authStatus", "Username or email and password are required.", true);
+    return;
+  }
+  try {
+    await PData().login(username, password, authChecked("authRemember"));
+    await loadSignedInAccount();
+    logHistory("login", "Signed in");
+    showAuth(false);
+    if (CTX) CTX.navigate("/editor");
+  } catch (e) { dataProblem(e); }
 }
 
-/* main.ts:2087-2099 */
+function enterGuest() {
+  currentUser = null;
+  guestMode = true;
+  currentSettings = loadGuestSettings();
+  applyTheme(currentSettings.darkMode);
+  renderAccessState();
+  showAuth(false);
+  if (CTX) CTX.navigate("/editor");
+}
+
 async function signOut() {
-    try {
-        if (currentUser)
-            await PData().logout();
-    }
-    catch (e) { }
-    currentUser = null;
-    accountWorkflows = [];
-    accountHistory = [];
-    dom_1.$("authStatus").textContent = "Signed out.";
-    renderAuth();
-    renderUserBadge();
+  try { if (currentUser) await PData().logout(); } catch (e) { }
+  currentUser = null;
+  guestMode = false;
+  accountWorkflows = [];
+  accountHistory = [];
+  currentSettings = loadGuestSettings();
+  applyTheme(currentSettings.darkMode);
+  showAuth(false);
+  showSettings(false);
+  renderAccessState();
+  if (CTX) CTX.navigate("/home");
 }
 
-/* main.ts:2100-2115 */
-async function changePassword() {
-    const cur = document.getElementById("authPwCurrent"), nw = document.getElementById("authPwNew");
-    if (!cur || !nw)
-        return;
-    if (!currentUser) {
-        dom_1.$("authStatus").textContent = "Sign in before changing the password.";
-        return;
-    }
-    try {
-        await PData().changePassword(cur.value, nw.value);
-        cur.value = ""; nw.value = "";
-        dom_1.$("authStatus").textContent = "Password changed. Every other session and remembered login was revoked (audited in the database).";
-        logHistory("password", "Changed password");
-    }
-    catch (e) { dataProblem(e); }
+function renderSettings() {
+  var username = byId("settingsUsername"), email = byId("settingsEmail"), dark = byId("settingsDarkMode"), eyebrow = byId("settingsEyebrow"), modal = byId("settingsModal");
+  if (modal) modal.setAttribute("data-settings-scope", currentUser ? "account" : "local");
+  document.querySelectorAll("[data-account-settings]").forEach(function (n) { n.hidden = !currentUser; });
+  if (eyebrow) eyebrow.textContent = currentUser ? "Account" : (guestMode ? "Guest preferences" : "Local preferences");
+  if (username) username.textContent = currentUser ? (currentUser.username || "Account") : (guestMode ? "Guest" : "Not signed in");
+  if (email) email.textContent = currentUser ? (currentUser.email || "") : "Saved on this device";
+  ["displayName", "team", "role", "region"].forEach(function (key) {
+    var input = byId("settings_" + key);
+    if (input) input.value = currentUser ? (currentUser[key] || "") : "";
+  });
+  if (dark) dark.checked = !!currentSettings.darkMode;
+  setMessage("settingsStatus", currentUser
+    ? "Changes to profile and appearance save to your account."
+    : "Appearance changes are saved on this device.", false);
 }
 
-/* main.ts:2116-2127 */
-async function restoreSession() {
-    try {
-        const s = await PData().session();
-        if (!s || !s.signedIn)
-            return;
-        currentUser = await PData().getProfile();
-        currentUser.userType = s.userType;
-        currentUser.capabilities = s.capabilities || [];
-        renderUserBadge();
-    }
-    catch (e) { /* database unreachable or signed out — badge stays "not signed in" */ }
+function showSettings(open) {
+  if (open === undefined) open = true;
+  var modal = byId("settingsModal");
+  if (!modal) return;
+  modal.style.display = open ? "flex" : "none";
+  if (open) { showAuth(false); renderSettings(); }
 }
 
-/* main.ts:2128-2151 */
-async function saveCurrentWorkflow() {
-    if (ws_1.getActive() < 0) {
-        dom_1.flash("Open a workflow first.");
-        return;
-    }
-    if (!currentUser) {
-        showAuth(true);
-        dom_1.$("authStatus").textContent = "Sign in first, then save the workflow.";
-        return;
-    }
-    const d = ws_1.D();
-    const name = d.name || d.wf.name || "Workflow";
-    try {
-        const r = await PData().saveWorkflow({ name, workflow: ws_1.unified(d), config: {},
-            toolsExecuted: ws_1.activeToolIndexes(d), layout: d.pos });
-        dom_1.flash("Saved to database: " + name + (r && r.versionNumber ? "  (v" + r.versionNumber + ")" : ""));
-        logHistory("save", "Saved \u201C" + name + "\u201D with exact layout and tools");
-        refreshAccountData();
-    }
-    catch (e) {
-        dom_1.flash("Save failed: " + ((e && e.message) || e));
-        dataProblem(e);
-    }
-}
-
-/* main.ts:2152-2164 */
-async function loadSavedWorkflow(id) {
-    if (!currentUser)
-        return;
-    try {
-        const rec = await PData().loadWorkflow(id);
-        if (!rec)
-            return;
-        ws_1.ingest(rec.workflow, "Saved workflow");
-        logHistory("load", "Loaded \u201C" + rec.name + "\u201D (v" + rec.versionNumber + ") from " + new Date(rec.savedAt).toLocaleString());
-        showAuth(false);
-    }
-    catch (e) { dataProblem(e); }
-}
-
-/* main.ts:2165-2174 */
-async function deleteSavedWorkflow(id, name) {
-    if (!currentUser)
-        return;
-    try {
-        await PData().deleteWorkflow(id);
-        logHistory("delete", "Deleted \u201C" + (name || id) + "\u201D (audited)");
-        refreshAccountData();
-    }
-    catch (e) { dataProblem(e); }
-}
-
-/* main.ts:2175-2189 */
 async function updateProfile() {
-    if (!currentUser) {
-        dom_1.$("authStatus").textContent = "Sign in before updating demographics.";
-        return;
-    }
-    try {
-        await PData().updateProfile(profileFromInputs());
-        currentUser = Object.assign({}, currentUser, await PData().getProfile());
-        logHistory("profile", "Updated demographics");
-        dom_1.$("authStatus").textContent = "Demographics updated in the database.";
-        renderUserBadge();
-    }
-    catch (e) { dataProblem(e); }
+  if (!currentUser) return;
+  try {
+    setMessage("settingsStatus", "Saving profile…", false);
+    await PData().updateProfile(profileFromInputs());
+    currentUser = Object.assign({}, currentUser, await PData().getProfile());
+    logHistory("profile", "Updated demographics");
+    renderAccessState();
+    setMessage("settingsStatus", "Profile saved to your account.", false);
+  } catch (e) { dataProblem(e, "settingsStatus"); }
 }
-/* ---------- top workflow bar ---------- */
 
+function scheduleProfileSave() {
+  if (!currentUser) return;
+  clearTimeout(profileSaveTimer);
+  setMessage("settingsStatus", "Saving profile…", false);
+  profileSaveTimer = setTimeout(updateProfile, 350);
+}
 
-/* ---------------------------------------------------------------------------
- * init(ctx) — called ONCE by ui-boot.js, before the router starts.
- * Wires the modal's own controls. These live outside the outlet and are never
- * torn down, so they are bound once rather than per-mount.
- * -------------------------------------------------------------------------*/
+async function saveAppearance() {
+  var toggle = byId("settingsDarkMode"), previous = !!currentSettings.darkMode;
+  var darkMode = !!(toggle && toggle.checked);
+  applyTheme(darkMode);
+  if (!currentUser) {
+    saveGuestSettings(currentSettings);
+    setMessage("settingsStatus", "Appearance saved on this device.", false);
+    return;
+  }
+  setMessage("settingsStatus", "Saving appearance…", false);
+  try {
+    var saved = await PData().updateSettings({ darkMode: darkMode });
+    currentSettings = Object.assign({ darkMode: false }, saved || { darkMode: darkMode });
+    applyTheme(currentSettings.darkMode);
+    setMessage("settingsStatus", "Appearance saved to your account.", false);
+  } catch (e) {
+    applyTheme(previous);
+    if (toggle) toggle.checked = previous;
+    dataProblem(e, "settingsStatus");
+  }
+}
+
+async function changePassword() {
+  if (!currentUser) return;
+  var cur = byId("settingsPwCurrent"), nw = byId("settingsPwNew");
+  if (!cur || !nw || !cur.value || !nw.value) {
+    setMessage("settingsStatus", "Enter the current and new passwords.", true);
+    return;
+  }
+  try {
+    await PData().changePassword(cur.value, nw.value);
+    cur.value = ""; nw.value = "";
+    logHistory("password", "Changed password");
+    setMessage("settingsStatus", "Password changed. Other sessions and remembered logins were revoked.", false);
+  } catch (e) { dataProblem(e, "settingsStatus"); }
+}
+
+async function restoreSession() {
+  try {
+    var s = await PData().session();
+    if (s && s.signedIn) {
+      await loadSignedInAccount();
+      return true;
+    }
+  } catch (e) { }
+  currentSettings = loadGuestSettings();
+  applyTheme(currentSettings.darkMode);
+  renderAccessState();
+  return false;
+}
+
+async function saveCurrentWorkflow() {
+  if (ws_1.getActive() < 0) { dom_1.flash("Open a workflow first."); return; }
+  if (!currentUser) {
+    if (guestMode) dom_1.flash("Guest workflows are not saved. Sign in to save this workflow.");
+    else showAuth(true, "login");
+    return;
+  }
+  var d = ws_1.D(), name = d.name || d.wf.name || "Workflow";
+  try {
+    var r = await PData().saveWorkflow({ name: name, workflow: ws_1.unified(d), config: {},
+      toolsExecuted: ws_1.activeToolIndexes(d), layout: d.pos });
+    dom_1.flash("Saved to database: " + name + (r && r.versionNumber ? " (v" + r.versionNumber + ")" : ""));
+    logHistory("save", "Saved “" + name + "” with exact layout and tools");
+    refreshAccountData();
+  } catch (e) { dom_1.flash("Save failed: " + ((e && e.message) || e)); dataProblem(e); }
+}
+
+async function loadSavedWorkflow(id) {
+  if (!currentUser) return;
+  try {
+    var rec = await PData().loadWorkflow(id);
+    if (!rec) return;
+    ws_1.ingest(rec.workflow, "Saved workflow");
+    logHistory("load", "Loaded “" + rec.name + "” (v" + rec.versionNumber + ") from " + new Date(rec.savedAt).toLocaleString());
+    showAuth(false);
+  } catch (e) { dataProblem(e); }
+}
+
+async function deleteSavedWorkflow(id, name) {
+  if (!currentUser) return;
+  try {
+    await PData().deleteWorkflow(id);
+    logHistory("delete", "Deleted “" + (name || id) + "” (audited)");
+    refreshAccountData();
+  } catch (e) { dataProblem(e); }
+}
+
 exports.init = function (ctx) {
   CTX = ctx;
-  var bind = function (id, fn) {
-    var n = document.getElementById(id);
-    if (n) n.addEventListener("click", fn);
-  };
-  bind("btnSignIn",       function () { signIn(); });
-  bind("btnCreateUser",   function () { createUser(); });
-  bind("btnSignOut",      signOut);
-  bind("btnUpdateProfile", updateProfile);
-  bind("btnChangePw",     changePassword);
-  bind("authClose",       function () { showAuth(false); });
-  bind("btnSavedWorkflows", function () { showAuth(true); });
-  bind("btnLogin",        function () { showAuth(true); });
-
-  /* C2: the editor iframe calls this by name at any time. */
-  window.plumblineShowAuth = function (open) { return showAuth(open !== false); };
+  function bind(id, fn) { var n = byId(id); if (n) n.addEventListener("click", fn); }
+  bind("btnSignIn", signIn);
+  bind("btnCreateUser", createUser);
+  bind("btnSignOut", signOut);
+  bind("btnChangePw", changePassword);
+  bind("authClose", function () { showAuth(false); });
+  bind("settingsClose", function () { showSettings(false); });
+  bind("btnLogin", function () { showAuth(true, "login"); });
+  document.querySelectorAll("[data-auth-mode]").forEach(function (n) {
+    n.addEventListener("click", function () { showAuth(true, n.getAttribute("data-auth-mode") || "login"); });
+  });
+  document.querySelectorAll("[data-signout]").forEach(function (n) {
+    n.addEventListener("click", signOut);
+  });
+  document.querySelectorAll("[data-settings]").forEach(function (n) {
+    n.addEventListener("click", function () { showSettings(true); });
+  });
+  ["settings_displayName", "settings_team", "settings_role", "settings_region"].forEach(function (id) {
+    var n = byId(id); if (n) n.addEventListener("change", scheduleProfileSave);
+  });
+  var dark = byId("settingsDarkMode");
+  if (dark) dark.addEventListener("change", saveAppearance);
+  ["authUser", "authPass"].forEach(function (id) {
+    var n = byId(id); if (n) n.addEventListener("keydown", function (e) { if (e.key === "Enter") signIn(); });
+  });
+  ["signupEmail", "signupUsername", "signupPassword"].forEach(function (id) {
+    var n = byId(id); if (n) n.addEventListener("keydown", function (e) { if (e.key === "Enter") createUser(); });
+  });
+  window.plumblineShowAuth = function (open, mode) { showAuth(open !== false, mode); };
   window.plumblineBroadcastAuth = broadcastAuthToEditor;
+  currentSettings = loadGuestSettings();
+  applyTheme(currentSettings.darkMode);
+  renderAccessState();
 };
 
 exports.currentUser = function () { return currentUser; };
-
-/* ---- exports ---- */
-exports["PData"] = PData;
-exports["dataProblem"] = dataProblem;
-exports["authVal"] = authVal;
-exports["authChecked"] = authChecked;
-exports["blankProfile"] = blankProfile;
-exports["profileFromInputs"] = profileFromInputs;
-exports["broadcastAuthToEditor"] = broadcastAuthToEditor;
-exports["logHistory"] = logHistory;
-exports["renderUserBadge"] = renderUserBadge;
-exports["showAuth"] = showAuth;
-exports["refreshAccountData"] = refreshAccountData;
-exports["paintAccountLists"] = paintAccountLists;
-exports["renderAuth"] = renderAuth;
-exports["createUser"] = createUser;
-exports["signIn"] = signIn;
-exports["signOut"] = signOut;
-exports["changePassword"] = changePassword;
-exports["restoreSession"] = restoreSession;
-exports["saveCurrentWorkflow"] = saveCurrentWorkflow;
-exports["loadSavedWorkflow"] = loadSavedWorkflow;
-exports["deleteSavedWorkflow"] = deleteSavedWorkflow;
-exports["updateProfile"] = updateProfile;
+exports.hasAccess = hasAccess;
+exports.isGuest = isGuest;
+exports.enterGuest = enterGuest;
+exports.PData = PData;
+exports.dataProblem = dataProblem;
+exports.authVal = authVal;
+exports.authChecked = authChecked;
+exports.blankProfile = blankProfile;
+exports.profileFromInputs = profileFromInputs;
+exports.broadcastAuthToEditor = broadcastAuthToEditor;
+exports.logHistory = logHistory;
+exports.renderUserBadge = renderUserBadge;
+exports.renderAccessState = renderAccessState;
+exports.showAuth = showAuth;
+exports.showSettings = showSettings;
+exports.refreshAccountData = refreshAccountData;
+exports.paintAccountLists = paintAccountLists;
+exports.renderAuth = renderAuth;
+exports.createUser = createUser;
+exports.signIn = signIn;
+exports.signOut = signOut;
+exports.changePassword = changePassword;
+exports.restoreSession = restoreSession;
+exports.saveCurrentWorkflow = saveCurrentWorkflow;
+exports.loadSavedWorkflow = loadSavedWorkflow;
+exports.deleteSavedWorkflow = deleteSavedWorkflow;
+exports.updateProfile = updateProfile;
+exports.applyTheme = applyTheme;
 
 });
-

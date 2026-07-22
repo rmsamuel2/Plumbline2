@@ -93,6 +93,12 @@ window.PlumblineData = (function () {
     getProfile: function () { return api("/api/profile"); },
     updateProfile: function (dm) { return api("/api/profile", { method: "POST", body: dm }); },
 
+    /* ---- account-backed UI preferences ------------------------------------ */
+    getSettings: function () { return api("/api/settings"); },
+    updateSettings: function (settings) {
+      return api("/api/settings", { method: "PATCH", body: settings || {} });
+    },
+
     /* ---- workflow folders (recursive groups) -------------------------------- */
     listGroups: function () { return api("/api/groups"); },
     createGroup: function (name, parentGroupId, description) {

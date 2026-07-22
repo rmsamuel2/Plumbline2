@@ -2,8 +2,8 @@
     (function(){
       /* Phase 1: this file no longer routes. The router owns which screen is
          shown; loader.js is reduced to what only it can do - decoding the
-         base64 editor document into a blob URL for the iframe, and relaying
-         the two messages the editor document sends to its parent. */
+         base64 editor document into the iframe and relaying navigation/auth
+         messages. Save/library messages are owned by editor.ts. */
       var editorLoaded = false;
       function loadEditor(){
         if(editorLoaded) return;
@@ -14,8 +14,10 @@
           var raw = atob((node.textContent || '').trim());
           var bytes = new Uint8Array(raw.length);
           for(var i=0;i<raw.length;i++) bytes[i] = raw.charCodeAt(i);
-          var url = URL.createObjectURL(new Blob([bytes], {type:'text/html;charset=utf-8'}));
-          frame.src = url;
+          /* srcdoc keeps the editor same-origin and avoids environments that
+             decline blob: iframe navigation. TextDecoder restores the UTF-8
+             bytes produced by build.py without corrupting punctuation. */
+          frame.srcdoc = new TextDecoder('utf-8').decode(bytes);
           frame.addEventListener('load', function(){
             if (typeof window.plumblineBroadcastAuth === 'function')
               setTimeout(window.plumblineBroadcastAuth, 120);
@@ -35,16 +37,10 @@
           location.hash = '#' + (map[d.page] || '/home');
           return;
         }
-        if(d.type === 'plumbline-library'){
-          /* The editor asked for the workflow library. editor.ts owns the
-             flush-then-open sequence; loader.js only relays. */
-          var m = window.__PL && window.__PL.load('studio/modules/editor.ts');
-          if (m && m.openLibraryFromEditor) m.openLibraryFromEditor();
-          return;
-        }
+        if(d.type === 'plumbline-library' || d.type === 'plumbline-save') return;
         if(d.type !== 'plumbline-auth') return;
         setTimeout(function(){
-          if (typeof window.plumblineShowAuth === 'function') { window.plumblineShowAuth(true); return; }
+          if (typeof window.plumblineShowAuth === 'function') { window.plumblineShowAuth(true, d.action || 'login'); return; }
           var b = document.getElementById('btnLogin');
           if(b) b.click();
         }, 60);

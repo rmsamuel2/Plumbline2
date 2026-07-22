@@ -5,82 +5,81 @@
 <body>
   <nav class="pageNav appNav">
     <div class="wm">plum<b>b</b>line</div>
-    <span class="navNote">Plumbline Studio</span>
+    <span class="navNote">Workflow intelligence</span>
     <span class="spacer"></span>
     <a href="#/home" data-route>Home</a>
-    <a href="#/editor" data-route>Editor</a>
-    <a href="#/analysis" data-route>Analysis</a>
-    <span class="userbadge navUserBadge">not signed in</span>
+    <a href="#/editor" data-route data-protected-nav hidden>Editor</a>
+    <a href="#/analysis" data-route data-protected-nav hidden>Analysis</a>
+    <button class="btn ghost navSettings" type="button" data-settings>Settings</button>
+    <button class="btn ghost navAuth" type="button" data-auth-mode="login" data-anonymous-only>Sign in</button>
+    <button class="btn navAuth navCreate" type="button" data-auth-mode="signup" data-anonymous-only>Create account</button>
+    <button class="btn ghost navSignOut" type="button" data-signout data-signed-in-only hidden>Sign out</button>
+    <span class="userbadge navUserBadge" data-session-badge hidden>not signed in</span>
   </nav>
   <main id="outlet">
   <section id="homePage" class="plPage active" aria-label="Plumbline home">
     <div class="homeShell">
-      <div class="homeTop">
-        <div class="homeBrand"><div class="wm">plum<b>b</b>line</div><div class="tag">true by measure</div></div>
-        <div class="homeAuthButtons">
-          <button class="btn ghost" id="homeLogin">Login</button>
-          <button class="btn ghost" id="homeGuest" title="Guest access is coming soon">Login as Guest</button>
-          <button class="btn ghost" id="homeMaintenance" style="display:none" title="Superuser maintenance is coming soon">Maintenance</button>
-        </div>
-      </div>
       <section class="homeHero">
-        <div class="homeCard">
-          <h1>Build the workflow first. Then measure it.</h1>
-          <p>Start in the workflow editor to build the process, then move into Analysis Studio for the six Plumbline tools, saved workflows, demographics, and history.</p>
-          <div class="homeActions">
-            <button class="btn big" id="btnOpenEditor">Open Workflow Editor</button>
-            <button class="btn dark" id="btnOpenStudio">Open Analysis Studio</button>
+        <div class="homeCard homeHeroContent">
+          <div id="homeGate">
+            <div class="homeEyebrow">Workflow intelligence, grounded in proof</div>
+            <h1>See the work clearly.<br><span>Improve it confidently.</span></h1>
+            <p class="homeLead">Plumbline turns complex processes into workflows you can map, measure, and strengthen. Start with an account to keep your work, or explore immediately as a guest.</p>
+            <div class="homeActions">
+              <button class="btn big" id="homeLogin">Sign in</button>
+              <button class="btn dark" id="homeSignup">Create account</button>
+              <button class="btn ghost homeGuestBtn" id="homeGuest">Continue as guest</button>
+            </div>
+            <div class="homePromise"><span>Map</span><i></i><span>Measure</span><i></i><span>Improve</span></div>
+          </div>
+          <div id="homeUnlocked" hidden>
+            <div class="homeEyebrow">Your workspace is ready</div>
+            <h1>Turn the process<br><span>into progress.</span></h1>
+            <p class="homeLead">Build or revise a workflow, then move into Analysis Studio to test its structure and uncover practical improvements.</p>
+            <div class="homeActions">
+              <button class="btn big" id="btnOpenEditor">Open Workflow Editor</button>
+              <button class="btn dark" id="btnOpenStudio">Open Analysis Studio</button>
+            </div>
+            <div class="homePromise"><span>Map</span><i></i><span>Measure</span><i></i><span>Improve</span></div>
           </div>
         </div>
-        <div class="homeSide">
-          <!-- NOTATION (Prompt1): the language/copy of this card needs to be edited. -->
-          <div class="miniCard"><h3>Workflow Editor <span class="copyNote" title="Per Prompt1: the language of this card needs to be edited">copy to be edited</span></h3><p>Use the free-form Plumbline editor for categories, named boxes, connections, time per step, cost metadata, cloud SQL setup, JSON import/export, and PNG export.</p></div>
-          <!-- NOTATION (Prompt1): the language/copy of this card needs to be edited. -->
-          <div class="miniCard"><h3>Analysis Studio <span class="copyNote" title="Per Prompt1: the language of this card needs to be edited">copy to be edited</span></h3><p>Open the Plumbline workspace for the six improvement tools, illustrative cost/time views, saved workflows, demographics, and history.</p></div>
+        <div class="homeIdentity" aria-hidden="true">
+          <div class="identityHalo"></div>
+          <div class="identityWord">PLUMBLINE</div>
+          <div class="plumbLine"><span class="plumbTop"></span><span class="plumbNode nodeOne"></span><span class="plumbNode nodeTwo"></span><span class="plumbWeight"></span></div>
+          <div class="identityMeasure measureOne">01</div>
+          <div class="identityMeasure measureTwo">02</div>
+          <div class="identityMeasure measureThree">03</div>
+          <div class="identityTag">TRUE BY MEASURE</div>
         </div>
       </section>
     </div>
   </section>
   <section id="editorPage" class="plPage" aria-label="Workflow Editor page">
-    <div class="pageNav">
-      <div class="wm">plum<b>b</b>line</div>
-      <span class="navNote">Workflow Editor</span>
-      <span class="spacer"></span>
-      <a class="btn ghost" href="#/home">Home</a>
-      <a class="btn ghost" href="#/analysis" title="Analyze the current Workflow Editor process">Analysis Studio</a>
-      <span class="userbadge navUserBadge">not signed in</span>
-    </div>
-    <div id="editorWfbar" class="wfbar editorWfbar"></div>
     <div id="editorWfbar" class="wfbar editorWfbar"></div>
     <iframe id="workflowEditorFrame" title="Workflow Editor"></iframe>
   </section>
   <section id="studioPage" class="plPage" aria-label="Plumbline Studio page">
-    <div class="pageNav">
-      <div class="wm">plum<b>b</b>line</div>
-      <span class="navNote">Analysis Studio</span>
-      <span class="spacer"></span>
-      <a class="btn ghost" href="#/home">Home</a>
-      <a class="btn ghost" href="#/editor">Workflow Editor</a>
-      <span class="userbadge navUserBadge">not signed in</span>
-    </div>
-
   <div id="err" style="display:none;background:#B2453C;color:#fff;padding:8px 14px;font:13px monospace"></div>
-  <header><div class="wm">plum<b>b</b>line</div><div class="sub">Analysis Studio — current editor workflow and combined Σ value</div><div id="analysisHudDock" class="hudDock"></div><div class="eyebrow">true by measure</div></header>
-  <div class="topbar">
+  <header class="analysisStudioHeader"><div class="analysisTitleBlock"><div class="analysisTitle">Analysis Studio</div><div class="sub">Current editor workflow and combined Σ value</div></div><div id="analysisHudDock" class="hudDock"></div></header>
+  <div class="topbar analysisToolbar">
     <div id="wfbar"></div>
-    <span class="sep"></span>
-    <button class="btn ghost" id="btnNew">New</button>
-    <button class="btn ghost" id="btnAdd">Add</button>
-    <select id="exampleSel" class="exsel" title="Add an example workflow"><option value="">Add example…</option><option value="aml">AML / KYC</option><option value="data">Data Pipeline</option><option value="carf">CARF Reporting</option><option value="fmv">FMV Pricing</option><option value="change">Change Mgmt</option></select>
-    <button class="btn ghost" id="btnFill">Fill (illustrative)</button>
-    <button class="btn ghost" id="btnEstimate" title="fill every tile with reasonable, illustrative figures">Add fictitious cost/time</button>
-    <label class="file">Upload<input type="file" id="fileWf" accept="application/json,.json"></label>
-    <button class="btn ghost" id="btnReadSaveStudio" title="Open the workflow library">Read/Save</button>
-    <button class="btn ghost" id="btnReadSaveStudio">Read/Save</button>
-    <button class="btn ghost" id="btnDownload">Download</button>
-    <button class="btn ghost" id="btnSaveWorkflow">Save workflow</button>
-    <button class="btn ghost" id="btnSavedWorkflows">Saved workflows</button>
-    <button class="btn primary" id="btnAll">Apply all improvements</button>
+    <div class="analysisToolbarActions">
+      <div class="analysisToolbarGroup analysisToolbarGroupLegacy" aria-label="Workflow controls">
+        <button class="btn ghost" id="btnNew">New</button>
+        <button class="btn ghost" id="btnAdd">Duplicate</button>
+        <select id="exampleSel" class="exsel" title="Add an example workflow"><option value="">Add example…</option><option value="aml">AML / KYC</option><option value="data">Data Pipeline</option><option value="carf">CARF Reporting</option><option value="fmv">FMV Pricing</option><option value="change">Change Mgmt</option></select>
+        <button class="btn ghost" id="btnFill">Fill example</button>
+        <button class="btn ghost" id="btnEstimate" title="Fill every tile with reasonable, illustrative figures">Estimate cost/time</button>
+        <label class="file">Upload<input type="file" id="fileWf" accept="application/json,.json"></label>
+      </div>
+      <div class="analysisToolbarGroup analysisToolbarGroupPrimary" aria-label="Save and analysis controls">
+        <button class="btn" id="btnSaveStudio">Save</button>
+        <button class="btn ghost" id="btnExploreSavedStudio">Explore Saved</button>
+        <button class="btn ghost" id="btnDownload">Download</button>
+        <button class="btn primary" id="btnAll">Apply all improvements</button>
+      </div>
+    </div>
   </div>
   <div id="app">
     <section class="stage">
@@ -101,7 +100,7 @@
       <div class="pane" id="pane_tools" style="display:none"><div id="tools"></div></div>
       <div class="pane" id="pane_table" style="display:none"><div id="inspector"></div><div id="editor"></div><div id="status" class="status ok">✓ Ready.</div></div>
       <div class="pane" id="pane_json" style="display:none"><p class="hint">One document: <b>workflow</b> + <b>cost</b> + <b>time</b>. Roles: step, quality, hold, decision, rework, terminal. Mark one state <code>"initial": true</code>; terminals take <code>"accept"</code> or <code>"reject"</code>. Edit the starter below, then <b>Load JSON</b>.</p><textarea id="json" spellcheck="false"></textarea><div style="margin-top:8px"><button class="btn" id="btnLoadJson">Load JSON</button></div></div>
-      <div class="pane" id="pane_analysis"><p class="hint">The certifying engine — findings are proven or refuted.</p><iframe id="results" title="Analysis"></iframe></div>
+      <div class="pane" id="pane_analysis"><iframe id="results" title="Analysis" scrolling="no"></iframe></div>
     </section>
   </div>
     <script>
@@ -113,14 +112,6 @@
         ? location.origin                 /* served page: same-origin API */
         : "http://localhost:8080";        /* opened from disk: local API */
   </script>
-  <div id="toolbar">
-    <button class="tool" data-tool="0"><b>1.</b> Zoom out</button>
-    <button class="tool" data-tool="1"><b>2.</b> Spot duplicates</button>
-    <button class="tool" data-tool="2"><b>3.</b> Plan vs. reality</button>
-    <button class="tool" data-tool="3"><b>4.</b> Move the decision</button>
-    <button class="tool" data-tool="4"><b>5.</b> Run in parallel</button>
-    <button class="tool" data-tool="5"><b>6.</b> Find the loops</button>
-  </div>
   <!-- ===== Plumbline layered runtime (order matters) =====================
        1) runtime        shared module registry (window.__PL)
        2) engine mods    the encapsulated math (io/core/cost/lemma)
@@ -162,56 +153,149 @@
 
       <div class="libFoot">
         <button class="btn primary" id="libOpen">Open</button>
-
-        <div class="libSaveBox">
-          <label class="libLbl" for="libSaveName">Save as</label>
-          <input id="libSaveName" type="text" placeholder="Workflow name">
-          <label class="libLbl" for="libSaveDesc">Description</label>
-          <input id="libSaveDesc" type="text" placeholder="What this is, or what changed">
-          <label class="libLbl" for="libSaveFolder">Into folder</label>
-          <select id="libSaveFolder"></select>
-          <label class="libAll"><input type="checkbox" id="libSaveAll"><span> Save all open workflows</span></label>
-          <button class="btn" id="libSave">Save</button>
-        </div>
       </div>
       <div id="libStatus" class="libStatus"></div>
+      <div id="libEditSheet" class="libEditSheet" role="dialog" aria-label="Edit workflow properties" hidden>
+        <div class="libEditHead">
+          <div><span id="libEditEyebrow">Workflow properties</span><strong id="libEditTitle">Edit workflow</strong></div>
+          <button class="libIconBtn" id="libEditClose" type="button" aria-label="Close workflow properties">&times;</button>
+        </div>
+        <div class="libEditBody">
+          <label class="libLbl" for="libEditName">Name</label>
+          <input id="libEditName" type="text" maxlength="160" autocomplete="off">
+          <label class="libLbl" for="libEditDesc">Description</label>
+          <textarea id="libEditDesc" rows="4" maxlength="1000" placeholder="What this workflow is for"></textarea>
+          <div id="libEditFolderFields" class="libEditFolderFields">
+            <label class="libLbl" id="libEditFolderLabel" for="libEditFolder">Folder</label>
+            <select id="libEditFolder"></select>
+            <div id="libCreateFolderBox" class="libCreateFolderBox" hidden>
+              <label class="libLbl" for="libCreateFolderName">New folder name</label>
+              <input id="libCreateFolderName" type="text" maxlength="160" autocomplete="off" placeholder="Folder name">
+            </div>
+          </div>
+          <div id="libEditStatus" class="libStatus"></div>
+          <div class="libEditActions">
+            <button class="btn ghost" id="libEditCancel" type="button">Cancel</button>
+            <button class="btn" id="libEditSave" type="button">Save properties</button>
+          </div>
+        </div>
+      </div>
     </aside>
   </div>
+  <div id="libraryConfirmModal" class="modal" style="display:none">
+    <div class="modalbox libraryConfirmBox" role="alertdialog" aria-modal="true" aria-labelledby="libraryConfirmTitle" aria-describedby="libraryConfirmMessage">
+      <button class="modalclose" id="libraryConfirmClose" type="button" aria-label="Close confirmation dialog">&times;</button>
+      <div class="saveEyebrow">Confirm action</div>
+      <h2 id="libraryConfirmTitle">Delete item?</h2>
+      <p id="libraryConfirmMessage" class="saveIntro"></p>
+      <div class="saveDialogActions">
+        <button class="btn ghost" id="libraryConfirmCancel" type="button">Cancel</button>
+        <button class="btn danger" id="libraryConfirmAccept" type="button">Delete</button>
+      </div>
+    </div>
+  </div>
+  <div id="workflowSaveModal" class="modal" style="display:none">
+    <div class="modalbox workflowSaveBox" role="dialog" aria-modal="true" aria-labelledby="workflowSaveTitle">
+      <button class="modalclose" id="workflowSaveClose" type="button" aria-label="Close save workflow dialog">&times;</button>
+      <div class="saveEyebrow">Save workflow</div>
+      <h2 id="workflowSaveTitle">Save your workflow</h2>
+      <p class="saveIntro">Create a new saved workflow or replace the current version of one you already saved.</p>
+      <div class="saveModeChoice" role="radiogroup" aria-label="Save method">
+        <label class="saveModeCard"><input type="radio" name="workflowSaveMode" value="new" checked><span><b>Save as new</b><small>Create a separate saved workflow.</small></span></label>
+        <label class="saveModeCard"><input type="radio" name="workflowSaveMode" value="update"><span><b>Update existing</b><small>Save this work as the latest version of another workflow.</small></span></label>
+      </div>
+      <section id="saveAsNewPanel" class="saveFormPanel">
+        <label class="libLbl" for="workflowSaveName">Name</label>
+        <input id="workflowSaveName" type="text" maxlength="160" autocomplete="off">
+        <label class="libLbl" for="workflowSaveDescription">Description</label>
+        <textarea id="workflowSaveDescription" rows="3" maxlength="1000" placeholder="What this workflow is for"></textarea>
+        <label class="libLbl" for="workflowSaveFolder">Folder</label>
+        <select id="workflowSaveFolder"></select>
+      </section>
+      <section id="saveUpdatePanel" class="saveFormPanel" hidden>
+        <label class="libLbl" for="workflowSaveTarget">Workflow to update</label>
+        <select id="workflowSaveTarget"></select>
+        <p class="saveUpdateNote">The selected workflow keeps its name and folder. Your open workflow becomes its newest version; earlier versions remain in history.</p>
+      </section>
+      <div id="workflowSaveStatus" class="authstatus" hidden></div>
+      <div class="saveDialogActions">
+        <button class="btn ghost" id="workflowSaveCancel" type="button">Cancel</button>
+        <button class="btn" id="workflowSaveConfirm" type="button">Save as new</button>
+      </div>
+    </div>
+  </div>
   <div id="authModal" class="modal" style="display:none">
-    <div class="modalbox">
+    <div class="modalbox authModalBox">
       <button class="modalclose" id="authClose" title="close">×</button>
-      <h2 id="authTitle">Sign in or create user</h2>
+      <h2 id="authTitle">Welcome to Plumbline</h2>
       <div id="authStatus" class="authstatus"></div>
-      <div class="authgrid">
-        <label>Username / email<input id="authUser" autocomplete="username" placeholder="max@example.com"></label>
-        <label>Password<input id="authPass" type="password" autocomplete="current-password" placeholder="password"></label>
+      <div id="authEntryPanels" class="authEntryPanels">
+        <section class="authPanel" data-auth-panel="login">
+          <h3>Sign in</h3>
+          <div class="authgrid oneCol">
+            <label>Username or email<input id="authUser" autocomplete="username" placeholder="you@example.com"></label>
+            <label>Password<input id="authPass" type="password" autocomplete="current-password" placeholder="Password"></label>
+          </div>
+          <div class="authactions">
+            <button class="btn" id="btnSignIn">Sign in</button>
+            <label class="authremember"><input type="checkbox" id="authRemember" checked> Keep me signed in</label>
+          </div>
+          <p class="authSwitch">New to Plumbline? <button type="button" data-auth-mode="signup">Create an account</button></p>
+        </section>
+        <section class="authPanel" data-auth-panel="signup">
+          <h3>Create an account</h3>
+          <div class="authgrid oneCol">
+            <label>Email<input id="signupEmail" type="email" autocomplete="email" placeholder="you@example.com"></label>
+            <label>Username <span class="optional">optional</span><input id="signupUsername" autocomplete="username" placeholder="Defaults to the part before @"></label>
+            <label>Password<input id="signupPassword" type="password" autocomplete="new-password" placeholder="At least 8 characters"></label>
+          </div>
+          <div class="authactions"><button class="btn" id="btnCreateUser">Create account</button></div>
+          <p class="authSwitch">Already have an account? <button type="button" data-auth-mode="login">Sign in</button></p>
+        </section>
       </div>
-      <div class="authactions">
-        <button class="btn" id="btnSignIn">Sign in</button>
-        <button class="btn ghost" id="btnCreateUser">Create user</button>
-        <button class="btn ghost" id="btnSignOut">Sign out</button>
-        <label class="authremember"><input type="checkbox" id="authRemember" checked> remember me on this device (secure token, revoked on password change)</label>
-      </div>
-      <h3>Demographics</h3>
-      <div class="authgrid">
-        <label>Name<input id="prof_displayName" placeholder="Display name"></label>
-        <label>Email<input id="prof_email" placeholder="Email"></label>
-        <label>Team / org<input id="prof_team" placeholder="Team or organization"></label>
-        <label>Role<input id="prof_role" placeholder="Role"></label>
-        <label>Region<input id="prof_region" placeholder="Region"></label>
-      </div>
-      <div class="authactions"><button class="btn ghost" id="btnUpdateProfile">Update demographics</button></div>
-      <div id="authPwChange" style="display:none">
-        <h3>Change password</h3>
-        <div class="authgrid">
-          <label>Current password<input id="authPwCurrent" type="password" autocomplete="current-password"></label>
-          <label>New password (min 8)<input id="authPwNew" type="password" autocomplete="new-password"></label>
+      <div id="authAccountPanel" hidden>
+        <div class="authactions accountActions">
+          <button class="btn ghost" type="button" data-settings>Open settings</button>
+          <button class="btn ghost" id="btnSignOut">Sign out</button>
         </div>
-        <div class="authactions"><button class="btn ghost" id="btnChangePw">Change password</button></div>
+        <div class="authcols">
+          <div><h3>Saved workflows</h3><div id="savedList" class="scrollbox"></div></div>
+          <div><h3>On-line history</h3><div id="historyList" class="scrollbox"></div></div>
+        </div>
       </div>
-      <div class="authcols">
-        <div><h3>Saved workflows</h3><div id="savedList" class="scrollbox"></div></div>
-        <div><h3>On-line history</h3><div id="historyList" class="scrollbox"></div></div>
+    </div>
+  </div>
+  <div id="settingsModal" class="modal" style="display:none">
+    <div class="modalbox settingsModalBox" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <button class="modalclose" id="settingsClose" title="close">×</button>
+      <div class="settingsHeader">
+        <div><div class="settingsEyebrow" id="settingsEyebrow">Account</div><h2 id="settingsTitle">Settings</h2></div>
+        <div class="settingsIdentity"><b id="settingsUsername"></b><span id="settingsEmail"></span></div>
+      </div>
+      <div id="settingsStatus" class="authstatus">Changes to profile and appearance save to your account.</div>
+      <div class="settingsGrid">
+        <section class="settingsCard" data-account-settings>
+          <h3>Demographics</h3>
+          <p class="settingsHint">These fields save automatically when you leave a field.</p>
+          <div class="authgrid oneCol">
+            <label>Name<input id="settings_displayName" placeholder="Display name"></label>
+            <label>Team / organization<input id="settings_team" placeholder="Team or organization"></label>
+            <label>Role<input id="settings_role" placeholder="Role"></label>
+            <label>Region<input id="settings_region" placeholder="Region"></label>
+          </div>
+        </section>
+        <section class="settingsCard">
+          <h3>Appearance</h3>
+          <label class="settingToggle"><span><b>Dark mode</b><small>Use a darker palette throughout Plumbline.</small></span><input id="settingsDarkMode" type="checkbox" role="switch"></label>
+        </section>
+        <section class="settingsCard" data-account-settings>
+          <h3>Security</h3>
+          <div class="authgrid oneCol">
+            <label>Current password<input id="settingsPwCurrent" type="password" autocomplete="current-password"></label>
+            <label>New password <span class="optional">minimum 8 characters</span><input id="settingsPwNew" type="password" autocomplete="new-password"></label>
+          </div>
+          <div class="authactions"><button class="btn ghost" id="btnChangePw">Change password</button></div>
+        </section>
       </div>
     </div>
   </div>

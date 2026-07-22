@@ -1119,6 +1119,19 @@ function commit() {
  * -------------------------------------------------------------------------*/
 exports.getDocs      = function () { return docs; };
 exports.setDocs      = function (a) { docs = a; };   /* init() resets the list */
+exports.closeDoc     = function (index) {
+    if (docs.length <= 1 || index < 0 || index >= docs.length)
+        return false;
+    docs.splice(index, 1);
+    if (active === index)
+        active = Math.min(index, docs.length - 1);
+    else if (active > index)
+        active--;
+    sel = null;
+    lastTool = -2;
+    fire("change");
+    return true;
+};
 exports.getActive    = function () { return active; };
 exports.setActive    = function (i) { active = i; };
 exports.getSel       = function () { return sel; };

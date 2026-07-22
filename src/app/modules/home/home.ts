@@ -41,18 +41,15 @@ exports["default"] = {
     var el = page();
     if (el) el.classList.add("active");
 
-    on("homeLogin", function () { auth_1.showAuth(true); });
-
-    /* Both intentionally inert - see the NOTATION comments in shell.html.
-     * Preserved as no-ops so the buttons stay visibly present. */
-    on("homeGuest", function () { });
-    on("homeMaintenance", function () { });
+    on("homeLogin", function () { auth_1.showAuth(true, "login"); });
+    on("homeSignup", function () { auth_1.showAuth(true, "signup"); });
+    on("homeGuest", function () { auth_1.enterGuest(); });
 
     /* These two replace the [data-page] delegate deleted from loader.js. */
     on("btnOpenEditor", function () { ctx.navigate("/editor"); });
     on("btnOpenStudio", function () { ctx.navigate("/analysis"); });
 
-    if (auth_1.renderUserBadge) auth_1.renderUserBadge();
+    if (auth_1.renderAccessState) auth_1.renderAccessState();
   },
 
   unmount: function () {

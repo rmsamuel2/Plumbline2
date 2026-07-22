@@ -24,7 +24,7 @@
    * The pre-split code had the same constraint and met it with
    * DOMContentLoaded at the foot of studio/main.ts. Keep this guard.
    * ------------------------------------------------------------------- */
-  function boot() {
+  async function boot() {
 
   // Point the data gateway at the Plumbline API (the database's front door)
   // before anything in the UI can ask it for data. window.PLUMBLINE_API is set
@@ -64,7 +64,6 @@
     var ws   = window.__PL.load("studio/shared/workspace.ts");
     var ed   = window.__PL.load("studio/modules/editor.ts");
     var lib  = window.__PL.load("studio/shared/library.ts");
-    var lib  = window.__PL.load("studio/shared/library.ts");
 
     var ctx = {
       data:      window.PlumblineData,
@@ -73,8 +72,16 @@
       workspace: ws,
       auth:      auth,
       library:   lib,
-      library:   lib,
-      bus:       bus
+      bus:       bus,
+      /* Auth is initialised before router.start() so it can restore a session
+         before protected routes are evaluated. Give that long-lived service a
+         navigation function now; the router installs its guarded version on
+         the per-screen context when it starts below. */
+      navigate:  function (path) {
+        if (typeof path !== "string" || path.charAt(0) !== "/")
+          throw new Error("navigate() expects a path beginning with '/'");
+        location.hash = "#" + path;
+      }
     };
 
     /* Boot-time services. Both install listeners that must exist regardless of
@@ -87,11 +94,10 @@
     auth.init(ctx);
     ed.init(ctx);
     lib.init(ctx);
-    /* after auth (the library needs a session) and before the router (a screen
-       may open it during its own mount). */
-    lib.init(ctx);
 
-    auth.restoreSession();
+    /* Resolve the remembered account before the router evaluates protected
+       routes, so a signed-in user never sees an avoidable auth-gate flash. */
+    await auth.restoreSession();
 
     window.__PL.load("studio/router.ts").start(ctx);
   } catch (e) {

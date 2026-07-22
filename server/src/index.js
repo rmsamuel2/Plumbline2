@@ -6,6 +6,7 @@
 //                 custom_state_type · analysis_run · analysis_finding
 //   003 patch     admin_reset_password() · admin_revoke_sessions() ·
 //                 purge_expired_auth() · append-only audit
+//   004 settings  account-backed application preferences (JSONB)
 //
 // Every authenticated request runs inside db.tx(), which sets the RLS context
 // (app.user_id / app.is_superuser) the schema's policies read.
@@ -124,7 +125,7 @@ async function logActivity(userId, action, meta) {
 
 /* ---- health ---------------------------------------------------------------- */
 app.get("/api/health", async (_req, res, next) => {
-  try { await query("select 1"); res.json({ ok: true, schema: "002+003" }); }
+  try { await query("select 1"); res.json({ ok: true, schema: "001-004" }); }
   catch (e) { next(e); }
 });
 
@@ -134,16 +135,20 @@ app.get("/api/health", async (_req, res, next) => {
 app.post("/api/signup", async (req, res, next) => {
   try {
     const b = req.body || {};
-    if (!b.username && !b.email)
-      return res.status(400).json({ error: "Username or email required" });
+    const email = String(b.email || "").trim().toLowerCase();
+    if (!email || email.indexOf("@") <= 0 || email.endsWith("@"))
+      return res.status(400).json({ error: "A valid email is required" });
+    const requestedUsername = String(b.username || "").trim().toLowerCase();
+    const username = requestedUsername || email.slice(0, email.indexOf("@"));
+    if (!username)
+      return res.status(400).json({ error: "Unable to derive a username from that email" });
     if (!b.password || String(b.password).length < 8)
       return res.status(400).json({ error: "Password must be at least 8 characters" });
     const hash = await bcrypt.hash(String(b.password), 10);
     const row = await one(
-      "insert into users(username,email,password_hash,display_name,team,role,region) " +
-      "values ($1,$2,$3,$4,$5,$6,$7) returning id",
-      [b.username || null, b.email || null, hash, b.displayName || "", b.team || "",
-       b.role || "", b.region || ""]);
+      "insert into users(username,email,password_hash,display_name) " +
+      "values ($1,$2,$3,$1) returning id",
+      [username, email, hash]);
     await query("insert into audit_log(actor_user_id, action, entity_type, entity_id) " +
                 "values ($1,'USER_CREATED','users',$1)", [row.id]);
     res.status(201).json({ userId: row.id });
@@ -227,10 +232,33 @@ app.post("/api/profile", requireSession, async (req, res, next) => {
   try {
     const b = req.body || {};
     await query("update users set display_name=coalesce($2,display_name), " +
-      "team=coalesce($3,team), role=coalesce($4,role), region=coalesce($5,region) where id=$1",
+      "team=coalesce($3,team), role=coalesce($4,role), region=coalesce($5,region), " +
+      "updated_at=now() where id=$1",
       [req.session.userid, b.displayName, b.team, b.role, b.region]);
     await logActivity(req.session.userid, "update_profile", {});
     res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+/* ---- account-backed application settings --------------------------------- */
+app.get("/api/settings", requireSession, async (req, res, next) => {
+  try {
+    const u = await one("select coalesce(settings, '{}'::jsonb) settings from users where id=$1",
+      [req.session.userid]);
+    res.json((u && u.settings) || {});
+  } catch (e) { next(e); }
+});
+app.patch("/api/settings", requireSession, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const patch = {};
+    if (Object.prototype.hasOwnProperty.call(b, "darkMode")) patch.darkMode = !!b.darkMode;
+    const u = await one(
+      "update users set settings=coalesce(settings, '{}'::jsonb) || $2::jsonb, updated_at=now() " +
+      "where id=$1 returning settings",
+      [req.session.userid, JSON.stringify(patch)]);
+    await logActivity(req.session.userid, "update_settings", { keys: Object.keys(patch) });
+    res.json((u && u.settings) || {});
   } catch (e) { next(e); }
 });
 
@@ -240,9 +268,10 @@ app.post("/api/profile", requireSession, async (req, res, next) => {
 app.get("/api/groups", requireSession, async (req, res, next) => {
   try {
     const rows = await tx(ctx(req), ({ q }) =>
-      q("select group_id as \"groupId\", parent_group_id as \"parentGroupId\", " +
-        " name, depth, path from v_workflow_tree where owner_user_id = $1 " +
-        "order by path", [req.session.userid]));
+      q("select t.group_id as \"groupId\", t.parent_group_id as \"parentGroupId\", " +
+        " t.name, g.description, t.depth, t.path from v_workflow_tree t " +
+        "join workflow_group g on g.group_id = t.group_id " +
+        "where t.owner_user_id = $1 order by t.path", [req.session.userid]));
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -315,6 +344,7 @@ app.get("/api/v2/workflows", requireSession, async (req, res, next) => {
   try {
     const rows = await tx(ctx(req), ({ q }) =>
       q("select w.workflow_id as id, w.name, w.group_id as \"groupId\", " +
+        " w.description, w.sort_order as \"sortOrder\", " +
         " w.created_at as \"createdAt\", w.updated_at as \"savedAt\", " +
         " v.version_id as \"currentVersionId\", v.version_number as \"currentVersion\", " +
         " v.kind as \"currentKind\", v.tools_executed as tools " +
@@ -420,13 +450,18 @@ app.get("/api/v2/versions/:versionId", requireSession, async (req, res, next) =>
 app.patch("/api/v2/workflows/:id", requireSession, async (req, res, next) => {
   try {
     const b = req.body || {};
+    const hasSortOrder = Object.prototype.hasOwnProperty.call(b, "sortOrder");
+    if (hasSortOrder && (!Number.isFinite(Number(b.sortOrder)) || Number(b.sortOrder) < 1))
+      return res.status(400).json({ error: "sortOrder must be a positive number" });
     const row = await tx(ctx(req), ({ o }) =>
       o("update workflow set name = coalesce($2, name), " +
         " description = coalesce($3, description), " +
-        " group_id = case when $4 then $5::uuid else group_id end " +
-        "where workflow_id = $1 and owner_user_id = $6 returning workflow_id",
+        " group_id = case when $4 then $5::uuid else group_id end, " +
+        " sort_order = case when $6 then $7::integer else sort_order end, updated_at = now() " +
+        "where workflow_id = $1 and owner_user_id = $8 returning workflow_id",
         [req.params.id, b.name, b.description,
          Object.prototype.hasOwnProperty.call(b, "groupId"), b.groupId || null,
+         hasSortOrder, hasSortOrder ? Math.round(Number(b.sortOrder)) : null,
          req.session.userid]));
     if (!row) return res.status(404).json({ error: "Not found" });
     res.json({ ok: true });
@@ -534,7 +569,7 @@ app.get("/api/workflows", requireSession, async (req, res, next) => {
   try {
     const rows = await tx(ctx(req), ({ q }) =>
       q("select w.workflow_id as id, w.name, w.updated_at as \"savedAt\", " +
-        " w.group_id as \"groupId\", w.visibility, w.lifecycle, " +
+        " w.description, w.group_id as \"groupId\", w.sort_order as \"sortOrder\", w.visibility, w.lifecycle, " +
         " (w.owner_user_id = $1) as \"isMine\", " +
         " coalesce(v.tools_executed, '[]'::jsonb) as tools, " +
         " v.version_number as \"versionNumber\" " +
@@ -543,7 +578,7 @@ app.get("/api/workflows", requireSession, async (req, res, next) => {
         // and trash are reachable) plus every live sample.
         "where (w.owner_user_id = $1 or (w.visibility = 'SAMPLE' and w.lifecycle = 'ACTIVE')) " +
         "  and (w.owner_user_id = $1 or w.lifecycle = 'ACTIVE') " +
-        "order by w.visibility, w.updated_at desc", [req.session.userid]));
+        "order by w.visibility, w.group_id nulls first, w.sort_order, lower(w.name)", [req.session.userid]));
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -616,10 +651,10 @@ app.get("/api/groups/:id/workflows", requireSession, async (req, res, next) => {
     const rows = await tx(ctx(req), ({ q }) =>
       q("select w.workflow_id as id, w.name, w.description, " +
         " v.snapshot as workflow, v.config, v.tools_executed as \"toolsExecuted\", " +
-        " v.layout, v.version_number as \"versionNumber\" " +
+        " v.layout, v.version_number as \"versionNumber\", w.sort_order as \"sortOrder\" " +
         "from workflow w join workflow_version v on v.version_id = w.current_version_id " +
         "where w.group_id = $1 and w.owner_user_id = $2 and w.lifecycle = 'ACTIVE' " +
-        "order by w.name", [req.params.id, req.session.userid]));
+        "order by w.sort_order, lower(w.name)", [req.params.id, req.session.userid]));
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -723,5 +758,5 @@ app.use((err, _req, res, _next) => {
 
 const PORT = process.env.PORT || 8080;
 if (require.main === module)
-  app.listen(PORT, () => console.log("Plumbline API (schema 002+003) on :" + PORT));
+  app.listen(PORT, () => console.log("Plumbline API (schema 001-004) on :" + PORT));
 module.exports = app;

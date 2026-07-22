@@ -64,6 +64,14 @@ function navigate(path) {
   var mine = ++token;
   var hit  = match(path);
 
+  /* Editor and Analysis are deliberately inaccessible until the visitor has
+     either authenticated or explicitly entered the in-memory guest session. */
+  if (hit.path !== "/home" && ctx && ctx.auth && !ctx.auth.hasAccess()) {
+    hit = ROUTES[0];
+    if (currentPath() !== "/home")
+      history.replaceState(null, "", "#/home");
+  }
+
   /* Already showing this module: re-mark the nav and stop. Without this,
      clicking the active nav link would unmount and remount for no reason,
      which in the Editor's case would flush and re-handshake the iframe. */
