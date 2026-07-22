@@ -125,7 +125,7 @@ async function logActivity(userId, action, meta) {
 
 /* ---- health ---------------------------------------------------------------- */
 app.get("/api/health", async (_req, res, next) => {
-  try { await query("select 1"); res.json({ ok: true, schema: "001-004" }); }
+  try { await query("select 1"); res.json({ ok: true, schema: "001-005" }); }
   catch (e) { next(e); }
 });
 
@@ -758,5 +758,5 @@ app.use((err, _req, res, _next) => {
 
 const PORT = process.env.PORT || 8080;
 if (require.main === module)
-  app.listen(PORT, () => console.log("Plumbline API (schema 001-004) on :" + PORT));
+  app.listen(PORT, () => console.log("Plumbline API (schema 001-005) on :" + PORT));
 module.exports = app;

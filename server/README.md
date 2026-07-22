@@ -2,7 +2,7 @@
 
 The backend for two of Plumbline's five layers, over the **production
 database schema** (001 base + migration 002 + security patch 003 + account
-settings migration 004):
+settings migration 004 + workflow ordering migration 005):
 
 - **Data interaction layer** — the `PlumblineData` gateway talks here: auth
   (bcrypt, signed httpOnly session cookie, hashed remember tokens), the atomic
@@ -33,8 +33,13 @@ cd server
 cp .env.example .env      # DATABASE_URL (Supabase URI), SESSION_SECRET, ANTHROPIC_API_KEY
 npm install
 npm run migrate           # applies migrations/*.sql in order — idempotent, safe to re-run
+npm run verify-db         # checks connectivity and migrations 004/005 without printing secrets
 npm start                 # Plumbline API on :8080
 ```
+
+The migration runner retries temporary pooler disconnects such as
+`ECONNRESET`. Set `MIGRATION_MAX_ATTEMPTS` to override the default of four
+attempts (accepted range: 1–8).
 
 `DATABASE_URL` host must use the Supabase **project reference id** (20 chars),
 and `SESSION_SECRET` must be a long random signing secret (never an API key).
@@ -83,6 +88,7 @@ migrations/001_init.sql               original base schema
 migrations/002_production_schema.sql  = plumbline_supabase_setup.sql (001 + 002)
 migrations/003_security_patch.sql     = plumbline_supabase_patch_003.sql
 migrations/004_user_settings.sql      account-backed JSONB preferences
+migrations/005_workflow_sort_order.sql persistent library ordering
 src/db.js        Postgres pool + RLS-context transactions (SET LOCAL app.user_id)
 src/normalize.js snapshot → normalized FSM tables (both snapshot dialects)
 src/index.js     Express app: auth, folders, versioned workflows, analyses,

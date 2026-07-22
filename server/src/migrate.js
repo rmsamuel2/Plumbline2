@@ -8,12 +8,52 @@ const fs = require("fs");
 const path = require("path");
 const { pool } = require("./db.js");
 
+const TRANSIENT_CONNECTION_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EPIPE",
+  "57P01", // admin_shutdown
+  "57P02", // crash_shutdown
+  "57P03"  // cannot_connect_now
+]);
+
+function isTransientConnectionError(error) {
+  if (error && TRANSIENT_CONNECTION_CODES.has(error.code)) return true;
+  const message = String(error && error.message || "").toLowerCase();
+  return message.includes("connection terminated") ||
+    message.includes("connection reset") ||
+    message.includes("socket hang up");
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function applyMigration(sql) {
+  const configuredAttempts = Number(process.env.MIGRATION_MAX_ATTEMPTS || 4);
+  const maxAttempts = Math.max(1, Math.min(8,
+    Number.isFinite(configuredAttempts) ? Math.floor(configuredAttempts) : 4));
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await pool.query(sql);
+      return;
+    } catch (error) {
+      if (!isTransientConnectionError(error) || attempt === maxAttempts) throw error;
+      const delayMs = Math.min(5000, 750 * (2 ** (attempt - 1)));
+      process.stdout.write("connection interrupted; retrying in " + delayMs + "ms ... ");
+      await wait(delayMs);
+    }
+  }
+}
+
 (async () => {
   const dir = path.join(__dirname, "..", "migrations");
   const files = fs.readdirSync(dir).filter(f => f.endsWith(".sql")).sort();
   for (const f of files) {
     process.stdout.write("applying " + f + " ... ");
-    await pool.query(fs.readFileSync(path.join(dir, f), "utf8"));
+    await applyMigration(fs.readFileSync(path.join(dir, f), "utf8"));
     console.log("ok");
   }
   console.log("migrated (" + files.length + " files)");
