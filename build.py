@@ -68,6 +68,7 @@ PARTS = [
     ("@@MODULE_EDITOR_JS@@",    "app/modules/editor/editor.ts",     "text"),
     ("@@MODULE_ANALYSIS_JS@@",  "app/modules/analysis/analysis.ts", "text"),
     ("@@MODULE_HOME_JS@@",      "app/modules/home/home.ts",         "text"),
+    ("@@MODULE_MAINTENANCE_JS@@", "app/modules/maintenance/maintenance.ts", "text"),
     ("@@ROUTER_JS@@",           "app/router.js",                    "text"),
     ("@@UI_BOOT_JS@@",        "app/ui-boot.js",              "text"),
     ("@@EDITOR_HTML_B64@@",   "editor/workflow-editor.html", "b64"),
@@ -83,6 +84,7 @@ REQUIRED_MODULES = (
     "studio/modules/editor.ts",
     "studio/modules/analysis.ts",
     "studio/modules/home.ts",
+    "studio/modules/maintenance.ts",
     "studio/router.ts",
 )
 

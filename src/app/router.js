@@ -24,7 +24,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var ROUTES = [
   { re: /^\/?$|^\/home$/,   mod: "studio/modules/home.ts",     path: "/home" },
   { re: /^\/editor$/,       mod: "studio/modules/editor.ts",   path: "/editor" },
-  { re: /^\/analysis$/,     mod: "studio/modules/analysis.ts", path: "/analysis" }
+  { re: /^\/analysis$/,     mod: "studio/modules/analysis.ts", path: "/analysis" },
+  { re: /^\/maintenance$/,  mod: "studio/modules/maintenance.ts", path: "/maintenance", superuser: true }
 ];
 
 var current = null;   /* { instance: object, name: string } */
@@ -67,6 +68,11 @@ function navigate(path) {
   /* Editor and Analysis are deliberately inaccessible until the visitor has
      either authenticated or explicitly entered the in-memory guest session. */
   if (hit.path !== "/home" && ctx && ctx.auth && !ctx.auth.hasAccess()) {
+    hit = ROUTES[0];
+    if (currentPath() !== "/home")
+      history.replaceState(null, "", "#/home");
+  }
+  if (hit.superuser && ctx && ctx.auth && !ctx.auth.isSuperuser()) {
     hit = ROUTES[0];
     if (currentPath() !== "/home")
       history.replaceState(null, "", "#/home");

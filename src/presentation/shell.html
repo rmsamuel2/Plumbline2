@@ -10,6 +10,7 @@
     <a href="#/home" data-route>Home</a>
     <a href="#/editor" data-route data-protected-nav hidden>Editor</a>
     <a href="#/analysis" data-route data-protected-nav hidden>Analysis</a>
+    <a href="#/maintenance" data-route data-superuser-only hidden>Maintenance</a>
     <button class="btn ghost navSettings" type="button" data-settings>Settings</button>
     <button class="btn ghost navAuth" type="button" data-auth-mode="login" data-anonymous-only>Sign in</button>
     <button class="btn navAuth navCreate" type="button" data-auth-mode="signup" data-anonymous-only>Create account</button>
@@ -103,6 +104,42 @@
       <div class="pane" id="pane_analysis"><iframe id="results" title="Analysis" scrolling="no"></iframe></div>
     </section>
   </div>
+  </section>
+  <section id="maintenancePage" class="plPage" aria-label="Superuser maintenance">
+    <header class="maintenanceHeader">
+      <div><div class="maintenanceEyebrow">Superuser access</div><h1>Maintenance</h1><p>Account operations, database health, and security audit history.</p></div>
+      <div class="maintenanceHeaderActions"><span class="maintenanceSecureBadge">Audited controls</span><button class="btn ghost" id="maintenanceRefresh" type="button">Refresh data</button></div>
+    </header>
+    <div class="maintenanceBody">
+      <div id="maintenanceStatus" class="maintenanceStatus" role="status">Loading maintenance data…</div>
+      <section class="maintenanceMetrics" aria-label="System overview">
+        <article><span>Total users</span><strong id="maintenanceTotalUsers">—</strong><small id="maintenanceActiveUsers">— active</small></article>
+        <article><span>Active sessions</span><strong id="maintenanceActiveSessions">—</strong><small>Current, non-revoked sessions</small></article>
+        <article><span>Workflows</span><strong id="maintenanceWorkflows">—</strong><small id="maintenanceVersions">— stored versions</small></article>
+        <article><span>Analysis runs</span><strong id="maintenanceAnalyses">—</strong><small id="maintenanceAuditCount">— audit events</small></article>
+        <article><span>Database</span><strong id="maintenanceDatabaseSize">—</strong><small id="maintenanceDatabaseName">Checking…</small></article>
+      </section>
+      <nav class="maintenanceTabs" aria-label="Maintenance sections">
+        <button type="button" data-maintenance-tab="users" class="on">Users</button>
+        <button type="button" data-maintenance-tab="audit">Audit log</button>
+        <button type="button" data-maintenance-tab="database">Database</button>
+      </nav>
+      <section class="maintenancePanel" data-maintenance-panel="users">
+        <div class="maintenancePanelHead"><div><h2>User management</h2><p>Passwords are never displayed. Every administrative change is recorded.</p></div><label class="maintenanceSearch">Search users<input id="maintenanceUserSearch" type="search" placeholder="Name, username, email, team…"></label></div>
+        <div class="maintenanceTableWrap"><table class="maintenanceTable"><thead><tr><th>User</th><th>Access</th><th>Activity</th><th>Status</th><th>Controls</th></tr></thead><tbody id="maintenanceUsersBody"></tbody></table></div>
+      </section>
+      <section class="maintenancePanel" data-maintenance-panel="audit" hidden>
+        <div class="maintenancePanelHead"><div><h2>Security audit log</h2><p>Append-only administrative and security events from the database.</p></div><button class="btn ghost" id="maintenanceAuditRefresh" type="button">Refresh log</button></div>
+        <div class="maintenanceTableWrap"><table class="maintenanceTable auditTable"><thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Target</th><th>Details</th></tr></thead><tbody id="maintenanceAuditBody"></tbody></table></div>
+      </section>
+      <section class="maintenancePanel" data-maintenance-panel="database" hidden>
+        <div class="maintenanceDatabaseGrid">
+          <article class="maintenanceDatabaseCard"><div class="maintenanceCardIcon">DB</div><div><h2>Supabase PostgreSQL</h2><p id="maintenanceDatabaseDetail">Checking database connection…</p><dl><div><dt>Schema</dt><dd>001-005</dd></div><div><dt>Active superusers</dt><dd id="maintenanceSuperusers">—</dd></div><div><dt>Last checked</dt><dd id="maintenanceCheckedAt">—</dd></div></dl></div></article>
+          <article class="maintenanceDatabaseCard maintenanceCleanupCard"><div class="maintenanceCardIcon amber">SEC</div><div><h2>Authentication cleanup</h2><p>Remove expired remember tokens and old expired or revoked sessions. Recent security history remains available.</p><label>Retain session history for <input id="maintenanceRetainDays" type="number" min="1" max="365" value="30"> days</label><button class="btn ghost" id="maintenancePurge" type="button">Purge expired authentication data</button></div></article>
+        </div>
+      </section>
+    </div>
+  </section>
     <script>
     /* Plumbline is database-backed. Point the app at the Plumbline API
        (server/ -> PostgreSQL/Supabase). Same-origin by default; set an
@@ -136,10 +173,9 @@
   <script>@@MODULE_EDITOR_JS@@</script>
   <script>@@MODULE_ANALYSIS_JS@@</script>
   <script>@@MODULE_HOME_JS@@</script>
+  <script>@@MODULE_MAINTENANCE_JS@@</script>
   <script>@@ROUTER_JS@@</script>
   <script>@@UI_BOOT_JS@@</script>
-
-  </section>
   </main>
   <div id="libraryOverlay" class="libOverlay" style="display:none">
     <aside id="librarySidebar" class="libPanel" role="dialog" aria-label="Workflow library">
@@ -238,7 +274,7 @@
           </div>
           <div class="authactions">
             <button class="btn" id="btnSignIn">Sign in</button>
-            <label class="authremember"><input type="checkbox" id="authRemember" checked> Keep me signed in</label>
+            <label class="authremember"><input type="checkbox" id="authRemember"> Keep me signed in</label>
           </div>
           <p class="authSwitch">New to Plumbline? <button type="button" data-auth-mode="signup">Create an account</button></p>
         </section>
@@ -297,6 +333,17 @@
           <div class="authactions"><button class="btn ghost" id="btnChangePw">Change password</button></div>
         </section>
       </div>
+    </div>
+  </div>
+  <div id="maintenanceActionModal" class="modal" style="display:none">
+    <div class="modalbox maintenanceActionBox" role="dialog" aria-modal="true" aria-labelledby="maintenanceActionTitle">
+      <button class="modalclose" id="maintenanceActionClose" type="button" aria-label="Close">×</button>
+      <div class="maintenanceEyebrow">Superuser confirmation</div>
+      <h2 id="maintenanceActionTitle">Confirm action</h2>
+      <p id="maintenanceActionMessage"></p>
+      <label id="maintenancePasswordField" hidden>Temporary password <span class="optional">minimum 8 characters</span><input id="maintenanceNewPassword" type="password" autocomplete="new-password"></label>
+      <div id="maintenanceActionStatus" class="authstatus" hidden></div>
+      <div class="maintenanceActionButtons"><button class="btn ghost" id="maintenanceActionCancel" type="button">Cancel</button><button class="btn" id="maintenanceActionConfirm" type="button">Confirm</button></div>
     </div>
   </div>
   <script type="application/json" id="workflowEditorHtmlB64">@@EDITOR_HTML_B64@@</script>

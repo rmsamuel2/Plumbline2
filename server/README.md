@@ -41,6 +41,19 @@ The migration runner retries temporary pooler disconnects such as
 `ECONNRESET`. Set `MIGRATION_MAX_ATTEMPTS` to override the default of four
 attempts (accepted range: 1–8).
 
+## Superuser maintenance
+
+The production schema provisions `rob` and `max` as active superusers. The
+**Maintenance** navigation item appears automatically when an authenticated
+session reports the superuser capability. Other accounts remain standard users
+unless their database role is explicitly changed by a superuser.
+
+Maintenance exposes user status and non-secret profile data, active-session and
+workflow counts, database health metrics, and the append-only audit log. It can
+reset another user's password, revoke sessions, activate/deactivate accounts,
+change access levels, and purge expired authentication records. Every route is
+protected by `requireSuperuser`; hiding the button is not the security boundary.
+
 `DATABASE_URL` host must use the Supabase **project reference id** (20 chars),
 and `SESSION_SECRET` must be a long random signing secret (never an API key).
 

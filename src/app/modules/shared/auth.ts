@@ -52,6 +52,10 @@ function dataProblem(e, targetId) {
 
 function hasAccess() { return guestMode || !!currentUser; }
 function isGuest() { return guestMode && !currentUser; }
+function isSuperuser() {
+  return !!(currentUser && (currentUser.userType === "superuser" ||
+    (currentUser.capabilities || []).indexOf("*") >= 0));
+}
 
 function broadcastAuthToEditor() {
   try {
@@ -82,6 +86,7 @@ function renderAccessState() {
   document.querySelectorAll("[data-account-only]").forEach(function (n) { n.hidden = !currentUser; });
   document.querySelectorAll("[data-anonymous-only]").forEach(function (n) { n.hidden = !!currentUser; });
   document.querySelectorAll("[data-signed-in-only]").forEach(function (n) { n.hidden = !currentUser; });
+  document.querySelectorAll("[data-superuser-only]").forEach(function (n) { n.hidden = !isSuperuser(); });
   document.querySelectorAll("[data-session-badge]").forEach(function (n) { n.hidden = !unlocked; });
   var gate = byId("homeGate"), ready = byId("homeUnlocked");
   if (gate) gate.hidden = unlocked;
@@ -422,6 +427,7 @@ exports.init = function (ctx) {
 exports.currentUser = function () { return currentUser; };
 exports.hasAccess = hasAccess;
 exports.isGuest = isGuest;
+exports.isSuperuser = isSuperuser;
 exports.enterGuest = enterGuest;
 exports.PData = PData;
 exports.dataProblem = dataProblem;

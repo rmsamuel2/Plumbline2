@@ -7,6 +7,7 @@
 //   003 patch     admin_reset_password() · admin_revoke_sessions() ·
 //                 purge_expired_auth() · append-only audit
 //   004 settings  account-backed application preferences (JSONB)
+//   005 ordering  persistent workflow library ordering
 //
 // Every authenticated request runs inside db.tx(), which sets the RLS context
 // (app.user_id / app.is_superuser) the schema's policies read.
@@ -684,10 +685,15 @@ app.post("/api/history", requireSession, async (req, res, next) => {
  * ===========================================================================*/
 app.get("/api/admin/users", requireSuperuser, async (req, res, next) => {
   try {
-    const rows = await query("select id, username, email, user_type as \"userType\", " +
-      " is_active as \"isActive\", display_name as \"displayName\", team, role, region, " +
-      " created_at as \"createdAt\", updated_at as \"updatedAt\" " +
-      "from v_users_admin order by created_at");
+    const rows = await query("select u.id, u.username, u.email, u.user_type as \"userType\", " +
+      " u.is_active as \"isActive\", u.display_name as \"displayName\", u.team, u.role, u.region, " +
+      " u.created_at as \"createdAt\", u.updated_at as \"updatedAt\", " +
+      " (select count(*)::integer from sessions s where s.user_id=u.id " +
+      "   and s.revoked_at is null and s.expires_at > now()) as \"activeSessions\", " +
+      " (select count(*)::integer from workflow w where w.owner_user_id=u.id " +
+      "   and w.lifecycle='ACTIVE') as \"workflowCount\", " +
+      " (select max(a.at) from activity_log a where a.user_id=u.id and a.action='login') as \"lastLogin\" " +
+      "from v_users_admin u order by u.created_at");
     await query("insert into audit_log(actor_user_id, action, entity_type, details) " +
       "values ($1,'SU_VIEWED_USER_DATA','users',$2)",
       [req.session.userid, JSON.stringify({ rows: rows.length })]);
@@ -717,24 +723,95 @@ app.post("/api/admin/users/:id/revoke-sessions", requireSuperuser, async (req, r
 app.post("/api/admin/users/:id/active", requireSuperuser, async (req, res, next) => {
   try {
     const active = !!(req.body || {}).isActive;
-    await query("update users set is_active = $2 where id = $1", [req.params.id, active]);
-    await query("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
-      "values ($1, $2, 'users', $3, '{}')",
-      [req.session.userid, active ? "SU_ACTIVATED_USER" : "SU_DEACTIVATED_USER", req.params.id]);
+    if (!active && req.params.id === req.session.userid)
+      return res.status(400).json({ error: "You cannot deactivate your own account" });
+    await tx(ctx(req), async ({ q, o }) => {
+      const target = await o("select id, user_type from users where id=$1 for update", [req.params.id]);
+      if (!target) throw new Error("User not found");
+      if (!active && target.user_type === "superuser") {
+        const remaining = await o("select count(*)::integer n from users " +
+          "where user_type='superuser' and is_active and id<>$1", [req.params.id]);
+        if (!remaining || remaining.n < 1) throw new Error("Cannot deactivate the last active superuser");
+      }
+      await q("update users set is_active = $2 where id = $1", [req.params.id, active]);
+      await q("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+        "values ($1, $2, 'users', $3, '{}')",
+        [req.session.userid, active ? "SU_ACTIVATED_USER" : "SU_DEACTIVATED_USER", req.params.id]);
+      if (!active) {
+        await q("update sessions set revoked_at=now() where user_id=$1 and revoked_at is null", [req.params.id]);
+        await q("delete from remember_tokens where user_id=$1", [req.params.id]);
+      }
+    });
     res.json({ ok: true });
+  } catch (e) {
+    if (/not found|last active superuser/i.test(e.message || ""))
+      return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+app.post("/api/admin/users/:id/type", requireSuperuser, async (req, res, next) => {
+  try {
+    const userType = String((req.body || {}).userType || "").toLowerCase();
+    if (!["user", "analyst", "superuser"].includes(userType))
+      return res.status(400).json({ error: "Invalid user type" });
+    if (req.params.id === req.session.userid && userType !== "superuser")
+      return res.status(400).json({ error: "You cannot remove your own superuser access" });
+    await tx(ctx(req), async ({ q, o }) => {
+      const target = await o("select id, user_type from users where id=$1 for update", [req.params.id]);
+      if (!target) throw new Error("User not found");
+      if (target.user_type === "superuser" && userType !== "superuser") {
+        const remaining = await o("select count(*)::integer n from users " +
+          "where user_type='superuser' and is_active and id<>$1", [req.params.id]);
+        if (!remaining || remaining.n < 1) throw new Error("Cannot demote the last active superuser");
+      }
+      await q("update users set user_type=$2 where id=$1", [req.params.id, userType]);
+      await q("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+        "values ($1,'SU_CHANGED_USER_TYPE','users',$2,$3)",
+        [req.session.userid, req.params.id,
+         JSON.stringify({ previousUserType: target.user_type, userType })]);
+    });
+    res.json({ ok: true, userType });
+  } catch (e) {
+    if (/not found|last active superuser/i.test(e.message || ""))
+      return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+app.get("/api/admin/status", requireSuperuser, async (req, res, next) => {
+  try {
+    const row = await one("select current_database() as \"databaseName\", " +
+      " current_schema() as \"schemaName\", pg_size_pretty(pg_database_size(current_database())) as \"databaseSize\", " +
+      " (select count(*)::integer from users) as \"totalUsers\", " +
+      " (select count(*)::integer from users where is_active) as \"activeUsers\", " +
+      " (select count(*)::integer from users where user_type='superuser' and is_active) as \"activeSuperusers\", " +
+      " (select count(*)::integer from sessions where revoked_at is null and expires_at > now()) as \"activeSessions\", " +
+      " (select count(*)::integer from workflow where lifecycle='ACTIVE') as \"activeWorkflows\", " +
+      " (select count(*)::integer from workflow_version) as \"workflowVersions\", " +
+      " (select count(*)::integer from analysis_run) as \"analysisRuns\", " +
+      " (select count(*)::integer from audit_log) as \"auditEvents\", now() as \"checkedAt\"");
+    await query("insert into audit_log(actor_user_id, action, entity_type, details) " +
+      "values ($1,'SU_VIEWED_SYSTEM_STATUS','database','{}')", [req.session.userid]);
+    res.json(row);
   } catch (e) { next(e); }
 });
 app.get("/api/admin/audit", requireSuperuser, async (req, res, next) => {
   try {
-    res.json(await query("select audit_id as \"auditId\", actor_user_id as \"actorUserId\", " +
+    const rows = await query("select audit_id as \"auditId\", actor_user_id as \"actorUserId\", " +
       " action, entity_type as \"entityType\", entity_id as \"entityId\", details, " +
-      " occurred_at as \"occurredAt\" from audit_log order by occurred_at desc limit 500"));
+      " occurred_at as \"occurredAt\" from audit_log order by occurred_at desc limit 500");
+    await query("insert into audit_log(actor_user_id, action, entity_type, details) " +
+      "values ($1,'SU_VIEWED_AUDIT_LOG','audit_log',$2)",
+      [req.session.userid, JSON.stringify({ rows: rows.length })]);
+    res.json(rows);
   } catch (e) { next(e); }
 });
 app.post("/api/admin/purge-expired-auth", requireSuperuser, async (req, res, next) => {
   try {
     const rows = await query("select * from purge_expired_auth($1)",
       [Number((req.body || {}).retainDays) || 30]);
+    await query("insert into audit_log(actor_user_id, action, entity_type, details) " +
+      "values ($1,'SU_PURGED_EXPIRED_AUTH','authentication',$2)",
+      [req.session.userid, JSON.stringify(rows[0] || {})]);
     res.json(Object.assign({ ok: true }, rows[0]));
   } catch (e) { next(e); }
 });
@@ -757,6 +834,19 @@ app.use((err, _req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 8080;
-if (require.main === module)
-  app.listen(PORT, () => console.log("Plumbline API (schema 001-005) on :" + PORT));
+let httpServer = null;
+if (require.main === module) {
+  // Retain the listener explicitly. Besides making graceful shutdown/testing
+  // possible, this prevents short-lived launch hosts from releasing the only
+  // JavaScript reference to the HTTP server immediately after startup.
+  httpServer = app.listen(PORT, error => {
+    if (error) {
+      console.error("Plumbline API failed to listen on :" + PORT + ":", error.message);
+      process.exitCode = 1;
+      return;
+    }
+    console.log("Plumbline API (schema 001-005) on :" + PORT);
+  });
+  app.locals.httpServer = httpServer;
+}
 module.exports = app;

@@ -363,6 +363,36 @@
   .settingToggle span{display:flex;flex-direction:column;gap:3px}.settingToggle small{color:var(--muted);font-size:12px}.settingToggle input{width:20px;height:20px;accent-color:var(--plumb)}
   @media(max-width:760px){.authEntryPanels,.settingsGrid{grid-template-columns:1fr}.settingsHeader{flex-direction:column}.settingsIdentity{align-items:flex-start}}
 
+  /* --- Superuser maintenance --------------------------------------------- */
+  #maintenancePage{background:var(--paper);overflow:hidden}
+  .maintenanceHeader{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:18px 24px;border-bottom:1px solid var(--line);background:var(--surface)}
+  .maintenanceHeader h1{margin:0;font:800 28px/1.05 Georgia,serif;letter-spacing:-.02em;color:var(--ink)}
+  .maintenanceHeader p{margin:5px 0 0;color:var(--muted);font-size:12px}.maintenanceEyebrow{margin-bottom:5px;color:var(--plumb);font-size:10px;font-weight:900;letter-spacing:.15em;text-transform:uppercase}
+  .maintenanceHeaderActions{display:flex;align-items:center;gap:10px}.maintenanceSecureBadge{padding:6px 9px;border:1px solid rgba(31,122,111,.32);border-radius:999px;background:color-mix(in srgb,var(--surface) 78%,var(--plumb) 22%);color:var(--plumb);font-size:10px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
+  .maintenanceBody{flex:1;min-height:0;overflow:auto;padding:20px 24px 32px}
+  .maintenanceStatus{min-height:18px;margin:0 0 10px;color:var(--muted);font-size:12px}.maintenanceStatus.bad{color:var(--bad)}
+  .maintenanceMetrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:17px}
+  .maintenanceMetrics article{position:relative;overflow:hidden;display:flex;flex-direction:column;gap:4px;min-height:108px;padding:15px 16px;border:1px solid var(--line);border-radius:15px;background:var(--surface);box-shadow:0 7px 18px rgba(22,36,59,.05)}
+  .maintenanceMetrics article:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--plumb)}
+  .maintenanceMetrics span{color:var(--muted);font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.maintenanceMetrics strong{margin-top:auto;color:var(--ink);font-size:25px;line-height:1}.maintenanceMetrics small{overflow:hidden;color:var(--muted);font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+  .maintenanceTabs{display:flex;gap:5px;margin-bottom:10px;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--surface-soft);width:max-content}
+  .maintenanceTabs button{border:0;border-radius:8px;padding:8px 14px;background:transparent;color:var(--muted);font:750 12px Arial;cursor:pointer}.maintenanceTabs button.on{background:var(--surface);color:var(--plumb);box-shadow:0 2px 7px rgba(22,36,59,.08)}
+  .maintenancePanel{overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:0 10px 28px rgba(22,36,59,.055)}
+  .maintenancePanelHead{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;padding:16px 18px;border-bottom:1px solid var(--line);background:var(--surface-soft)}
+  .maintenancePanelHead h2,.maintenanceDatabaseCard h2{margin:0;color:var(--ink);font-size:16px}.maintenancePanelHead p,.maintenanceDatabaseCard p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.5}
+  .maintenanceSearch{display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase}.maintenanceSearch input{width:min(320px,42vw);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:12px;text-transform:none}
+  .maintenanceTableWrap{overflow:auto;max-height:calc(100vh - 355px)}.maintenanceTable{width:100%;border-collapse:collapse;min-width:920px}.maintenanceTable th{position:sticky;top:0;z-index:2;padding:9px 12px;border-bottom:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:9px;font-weight:900;letter-spacing:.08em;text-align:left;text-transform:uppercase}.maintenanceTable td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:middle}.maintenanceTable tbody tr:last-child td{border-bottom:0}.maintenanceTable tbody tr:hover{background:color-mix(in srgb,var(--surface) 92%,var(--plumb) 8%)}
+  .maintenanceUserIdentity,.maintenanceActivityCell{display:table-cell}.maintenanceUserIdentity strong,.maintenanceActivityCell b{display:block;color:var(--ink);font-size:12px}.maintenanceUserIdentity span,.maintenanceUserIdentity small,.maintenanceActivityCell small{display:block;margin-top:2px;color:var(--muted);font-size:10px}.maintenanceUserIdentity span{color:var(--plumb)}
+  .maintenanceAccessCell{min-width:130px}.maintenanceRoleSelect{width:120px;padding:6px 7px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:11px}.maintenanceCurrentUser{display:block;margin-top:4px;color:var(--plumb);font-size:9px;font-weight:800;text-transform:uppercase}
+  .maintenanceUserStatus{display:inline-flex;padding:4px 7px;border-radius:999px;font-size:9px;font-weight:850;text-transform:uppercase}.maintenanceUserStatus.active{background:#e4f3ee;color:#17665d}.maintenanceUserStatus.inactive{background:#f7e8e5;color:var(--bad)}.maintenanceInactiveRow{opacity:.72}
+  .maintenanceUserControls{display:flex;flex-wrap:wrap;gap:5px;min-width:260px}.maintenanceUserControls .btn{white-space:nowrap}.btn.tiny.danger{border-color:rgba(178,69,60,.36);background:#fff4f2;color:var(--bad)}.btn:disabled{opacity:.42;cursor:not-allowed}
+  .maintenanceEmpty{padding:35px!important;text-align:center;color:var(--muted)}
+  .auditTable{min-width:1050px}.maintenanceAuditTime{white-space:nowrap;color:var(--muted);font-size:10px}.maintenanceAuditAction{color:var(--plumb);font-size:10px;font-weight:850}.maintenanceMono{max-width:230px;overflow:hidden;color:var(--muted);font:9px/1.4 Consolas,monospace;text-overflow:ellipsis;white-space:nowrap}.maintenanceAuditDetail{max-width:360px;color:var(--muted);font:9px/1.45 Consolas,monospace;word-break:break-word}
+  .maintenanceDatabaseGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:18px}.maintenanceDatabaseCard{display:flex;gap:14px;padding:17px;border:1px solid var(--line);border-radius:14px;background:var(--surface-soft)}.maintenanceCardIcon{width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center;border-radius:12px;background:var(--plumb);color:#fff;font-size:10px;font-weight:900}.maintenanceCardIcon.amber{background:var(--amber)}.maintenanceDatabaseCard>div:last-child{flex:1;min-width:0}.maintenanceDatabaseCard dl{display:grid;gap:7px;margin:14px 0 0}.maintenanceDatabaseCard dl div{display:flex;justify-content:space-between;gap:15px;padding-top:7px;border-top:1px solid var(--line)}.maintenanceDatabaseCard dt{color:var(--muted);font-size:10px}.maintenanceDatabaseCard dd{margin:0;color:var(--ink);font-size:10px;font-weight:800}.maintenanceCleanupCard label{display:flex;align-items:center;gap:8px;margin:14px 0 10px;color:var(--muted);font-size:11px}.maintenanceCleanupCard input{width:70px;padding:6px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink)}
+  .maintenanceActionBox{width:min(520px,94vw)}.maintenanceActionBox h2{margin:0;color:var(--ink)}.maintenanceActionBox>p{color:var(--muted);line-height:1.55}.maintenanceActionBox>label{display:flex;flex-direction:column;gap:5px;margin-top:13px;color:var(--ink);font-size:11px;font-weight:800}.maintenanceActionBox input{padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}.maintenanceActionButtons{display:flex;justify-content:flex-end;gap:7px;margin-top:17px}.maintenanceActionButtons .danger{background:var(--bad);border-color:var(--bad);color:#fff}
+  @media(max-width:1050px){.maintenanceMetrics{grid-template-columns:repeat(3,minmax(0,1fr))}.maintenanceDatabaseGrid{grid-template-columns:1fr}}
+  @media(max-width:700px){.maintenanceHeader{align-items:flex-start;flex-direction:column;padding:15px}.maintenanceBody{padding:14px}.maintenanceMetrics{grid-template-columns:1fr 1fr}.maintenancePanelHead{align-items:flex-start;flex-direction:column}.maintenanceSearch,.maintenanceSearch input{width:100%}.maintenanceDatabaseGrid{padding:12px}.maintenanceHeaderActions{width:100%;justify-content:space-between}}
+
   /* Account-backed dark mode. Hard-coded legacy surfaces are overridden here
      while the shared palette variables continue to drive new components. */
   html[data-theme="dark"]{--ink:#e8edf4;--plumb:#58c5b4;--light:#79d8ca;--paper:#0f1722;--line:#344252;--bad:#f08078;--amber:#f0ad4e;--surface:#172231;--surface-soft:#111c29;--muted:#aeb9c6;color-scheme:dark}
@@ -395,6 +425,12 @@
   html[data-theme="dark"] #editorPage{background:var(--surface);color:var(--ink);border-color:var(--line)}
   html[data-theme="dark"] .authPanel,
   html[data-theme="dark"] .settingsCard,
+  html[data-theme="dark"] .maintenanceHeader,
+  html[data-theme="dark"] .maintenanceMetrics article,
+  html[data-theme="dark"] .maintenancePanel,
+  html[data-theme="dark"] .maintenancePanelHead,
+  html[data-theme="dark"] .maintenanceTable th,
+  html[data-theme="dark"] .maintenanceDatabaseCard,
   html[data-theme="dark"] .authstatus,
   html[data-theme="dark"] #analysisHudDock #analysisNavHud,
   html[data-theme="dark"] .rightPanelHandle{background:var(--surface-soft);border-color:var(--line)}
