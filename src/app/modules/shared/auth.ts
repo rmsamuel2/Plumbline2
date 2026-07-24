@@ -357,10 +357,17 @@ async function saveCurrentWorkflow() {
     else showAuth(true, "login");
     return;
   }
-  var d = ws_1.D(), name = d.name || d.wf.name || "Workflow";
+  var d = ws_1.D();
+  if (!d) { dom_1.flash("The selected workflow is not available."); return; }
+  var name = d.name || (d.wf && d.wf.name) || "Workflow";
   try {
-    if (d.adminWorkflowEdit && isSuperuser()) {
-      var adminEdit = d.adminWorkflowEdit;
+    var adminAccess = d.adminWorkflowAccess || d.adminWorkflowEdit || d.adminWorkflowView;
+    if (adminAccess && adminAccess.mode === "view") {
+      dom_1.flash("This workflow is open in read-only mode. Return to Maintenance and choose Edit to make changes.");
+      return;
+    }
+    if (adminAccess && isSuperuser()) {
+      var adminEdit = adminAccess;
       var adminResult = await PData().admin.saveWorkflowVersion(adminEdit.workflowId, {
         workflow: ws_1.unified(d),
         config: {},

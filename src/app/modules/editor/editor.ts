@@ -178,7 +178,9 @@ function setupEditorSync() {
         /* Maintenance edit mode intentionally targets a database workflow
          * owned by another user. An unsolicited iframe snapshot must not
          * replace that explicit document while it is being edited. */
-        if (ws_1.getActive() >= 0 && ws_1.D().adminWorkflowEdit)
+        const currentDocument = ws_1.getActive() >= 0 ? ws_1.D() : null;
+        if (currentDocument && (currentDocument.adminWorkflowAccess ||
+            currentDocument.adminWorkflowEdit || currentDocument.adminWorkflowView))
             return;
         const studioVisible = (_a = document.getElementById("studioPage")) === null || _a === void 0 ? void 0 : _a.classList.contains("active");
         if (studioVisible)

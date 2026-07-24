@@ -150,7 +150,7 @@ function renderWorkflowDetail(detail) {
   target.innerHTML = "";
   if (!detail) {
     target.appendChild(node("div", "maintenanceWorkflowEmpty",
-      "Select View to inspect a workflow without changing it."));
+      "Choose View to open a read-only Studio, or Edit to open an editable Studio with database saving."));
     return;
   }
   var workflow = workflowDocument(detail);
@@ -215,34 +215,38 @@ function renderWorkflowList() {
   });
 }
 async function openWorkflowView(workflowId) {
-  setWorkflowStatus("Loading the current database version…", false);
-  try {
-    state.selectedWorkflow = await window.PlumblineData.admin.loadWorkflow(workflowId);
-    renderWorkflowList();
-    renderWorkflowDetail(state.selectedWorkflow);
-    setWorkflowStatus("Viewing the latest saved version. No changes can be made in this panel.", false);
-  } catch (error) {
-    setWorkflowStatus(String(error && error.message || error), true);
-  }
+  return openWorkflowInStudio(workflowId, "view");
 }
 async function openWorkflowEdit(workflowId, loaded) {
-  setWorkflowStatus("Opening the latest database version for editing…", false);
+  return openWorkflowInStudio(workflowId, "edit", loaded);
+}
+async function openWorkflowInStudio(workflowId, mode, loaded) {
+  var readOnly = mode === "view";
+  setWorkflowStatus(readOnly
+    ? "Opening the latest database version in read-only mode…"
+    : "Opening the latest database version for editing…", false);
   try {
     var detail = loaded && loaded.id === workflowId
       ? loaded : await window.PlumblineData.admin.loadWorkflow(workflowId);
     ws_1.ingest(detail.workflow, "Maintenance workflow");
     var document = ws_1.D();
+    if (!document) throw new Error("The workflow could not be opened in Studio.");
     document.name = detail.name || document.name;
     if (document.wf) document.wf.name = detail.name || document.wf.name;
-    document.adminWorkflowEdit = {
+    document.adminWorkflowAccess = {
+      mode: readOnly ? "view" : "edit",
       workflowId: detail.id,
       ownerUserId: detail.ownerUserId,
       ownerUsername: detail.ownerUsername || "user",
       versionNumber: detail.versionNumber
     };
+    if (readOnly) document.adminWorkflowView = document.adminWorkflowAccess;
+    else document.adminWorkflowEdit = document.adminWorkflowAccess;
     closeWorkflows();
-    setStatus("Editing " + detail.name + " for @" + detail.ownerUsername +
-      ". Save appends a synchronized database version.", false);
+    setStatus((readOnly ? "Viewing " : "Editing ") + detail.name + " for @" +
+      detail.ownerUsername + (readOnly
+        ? " in read-only mode."
+        : ". Save appends a synchronized database version."), false);
     if (routeContext) routeContext.navigate("/analysis");
   } catch (error) {
     setWorkflowStatus(String(error && error.message || error), true);

@@ -1892,16 +1892,53 @@ function init() {
  * -------------------------------------------------------------------------*/
 function page() { return document.getElementById("studioPage"); }
 
+function adminWorkflowAccess(documentModel) {
+  return documentModel && (documentModel.adminWorkflowAccess ||
+    documentModel.adminWorkflowEdit || documentModel.adminWorkflowView);
+}
+
 function renderMaintenanceEditMode() {
   var banner = document.getElementById("maintenanceEditBanner");
   if (!banner) return;
   var documentModel = ws_1.getActive() >= 0 ? ws_1.D() : null;
-  var edit = documentModel && documentModel.adminWorkflowEdit;
-  banner.hidden = !edit;
-  banner.textContent = edit
-    ? "Editing @" + edit.ownerUsername + " · Save creates database version " +
-      ((Number(edit.versionNumber) || 0) + 1)
+  var access = adminWorkflowAccess(documentModel);
+  var readOnly = !!(access && access.mode === "view");
+  banner.hidden = !access;
+  banner.classList.toggle("readOnly", readOnly);
+  banner.textContent = access
+    ? (readOnly
+      ? "Viewing @" + access.ownerUsername + " · Read-only database version " +
+        (access.versionNumber || "—")
+      : "Editing @" + access.ownerUsername + " · Save creates database version " +
+        ((Number(access.versionNumber) || 0) + 1))
     : "";
+}
+
+function applyMaintenanceAccessMode() {
+  var studio = page();
+  if (!studio) return;
+  var documentModel = ws_1.getActive() >= 0 ? ws_1.D() : null;
+  var access = adminWorkflowAccess(documentModel);
+  var readOnly = !!(access && access.mode === "view");
+  studio.classList.toggle("maintenanceReadOnly", readOnly);
+  [
+    "btnSaveStudio", "btnAll", "btnNew", "btnAdd", "exampleSel", "btnFill",
+    "btnEstimate", "fileWf", "btnAddState", "ctAddTrans", "ctDelete",
+    "btnTidy", "btnLoadJson"
+  ].forEach(function (id) {
+    var control = document.getElementById(id);
+    if (control) control.disabled = readOnly;
+  });
+  var save = document.getElementById("btnSaveStudio");
+  if (save) {
+    save.textContent = readOnly ? "Read-only" : "Save";
+    save.title = readOnly ? "View mode cannot save changes." : "";
+  }
+  studio.querySelectorAll("#editor input,#editor select,#editor textarea,#editor button," +
+    "#inspector input,#inspector select,#inspector textarea,#inspector button," +
+    ".analysisStepApply,[data-tool]").forEach(function (control) {
+      control.disabled = readOnly;
+    });
 }
 
 /* The change hook. This is full() WITHOUT its trailing persist(): workspace
@@ -1910,9 +1947,12 @@ function renderMaintenanceEditMode() {
 function renderAll() {
   renderMaintenanceEditMode();
   renderWfBar();
-  if (ws_1.getActive() === -1) { renderSigma(); syncToolButtons(); return; }
+  if (ws_1.getActive() === -1) {
+    renderSigma(); syncToolButtons(); applyMaintenanceAccessMode(); return;
+  }
   renderCanvas(); renderTable(); renderInspector();
   syncJson(); renderTools(); syncToolButtons();
+  applyMaintenanceAccessMode();
 }
 
 exports["default"] = {
@@ -1922,8 +1962,9 @@ exports["default"] = {
     /* Maintenance can load a user's workflow before Analysis has ever been
      * mounted. init() normally resets the workspace on its first run, so hold
      * that explicit document across initialization. */
-    var pendingAdminDocument = ws_1.getActive() >= 0 && ws_1.D().adminWorkflowEdit
-      ? ws_1.D() : null;
+    var pendingCandidate = ws_1.getActive() >= 0 ? ws_1.D() : null;
+    var pendingAdminDocument = adminWorkflowAccess(pendingCandidate)
+      ? pendingCandidate : null;
 
     /* Let editor.ts reach this screen without requiring it (avoids a cycle). */
     if (ed_1.setAnalysisHooks) ed_1.setAnalysisHooks({
@@ -1986,7 +2027,7 @@ exports["default"] = {
      * source of truth. Pulling the iframe here would replace it with whatever
      * the editor happened to show previously. */
     var activeDocument = ws_1.getActive() >= 0 ? ws_1.D() : null;
-    if (!(activeDocument && activeDocument.adminWorkflowEdit)) {
+    if (!adminWorkflowAccess(activeDocument)) {
       try { ed_1.requestEditorSync({ openAnalysis: true }); } catch (e) { }
     }
 

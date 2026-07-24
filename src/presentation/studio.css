@@ -471,6 +471,9 @@
   .analysisStudioHeader{align-items:center;padding:9px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
   .analysisTitleBlock{display:flex;flex:1 1 360px;align-items:baseline;gap:10px;min-width:260px}.analysisTitle{font:700 18px/1.1 Georgia,serif;color:var(--ink);white-space:nowrap}.analysisTitleBlock .sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .maintenanceEditBanner{flex:0 1 auto;max-width:420px;overflow:hidden;padding:7px 10px;border:1px solid rgba(31,122,111,.35);border-radius:999px;background:color-mix(in srgb,var(--surface) 76%,var(--plumb) 24%);color:var(--plumb);font-size:10px;font-weight:850;text-overflow:ellipsis;white-space:nowrap}.maintenanceEditBanner[hidden]{display:none}
+  .maintenanceEditBanner.readOnly{border-color:var(--line);background:var(--surface-soft);color:var(--muted)}
+  #studioPage.maintenanceReadOnly #cv,#studioPage.maintenanceReadOnly #canvastools,#studioPage.maintenanceReadOnly #editor,#studioPage.maintenanceReadOnly #inspector,#studioPage.maintenanceReadOnly #json,#studioPage.maintenanceReadOnly .analysisStepApply,#studioPage.maintenanceReadOnly [data-tool]{pointer-events:none}
+  #studioPage.maintenanceReadOnly #cv,#studioPage.maintenanceReadOnly #canvastools,#studioPage.maintenanceReadOnly #editor,#studioPage.maintenanceReadOnly #inspector{cursor:not-allowed}
   .analysisToolbar{flex-wrap:nowrap;align-items:flex-start;gap:12px;padding:9px 14px;background:var(--surface);box-shadow:0 4px 16px rgba(22,36,59,.045);z-index:12}
   .analysisToolbar>#wfbar{flex:1 1 360px;max-width:none;padding-top:2px}
   .analysisToolbarActions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}

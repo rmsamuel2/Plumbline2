@@ -1334,11 +1334,18 @@ exports.openSave = function (opts) {
     if (CTX && CTX.auth && CTX.auth.showAuth) CTX.auth.showAuth(true, "login");
     return Promise.resolve();
   }
-  if (!ws_1.D()) { dom_1.flash("Open a workflow first."); return Promise.resolve(); }
+  var saveDocument = ws_1.D();
+  if (!saveDocument) { dom_1.flash("Open a workflow first."); return Promise.resolve(); }
+  var adminAccess = saveDocument.adminWorkflowAccess ||
+    saveDocument.adminWorkflowEdit || saveDocument.adminWorkflowView;
+  if (adminAccess && adminAccess.mode === "view") {
+    dom_1.flash("This workflow is read-only. Choose Edit from Maintenance to save changes.");
+    return Promise.resolve();
+  }
   /* Maintenance edit mode targets a specific workflow owned by another user.
    * Do not offer Save as new / Update existing against the superuser's own
    * library; append an audited version to the selected owner's workflow. */
-  if (ws_1.D().adminWorkflowEdit && CTX.auth.saveCurrentWorkflow)
+  if (adminAccess && CTX.auth.saveCurrentWorkflow)
     return Promise.resolve(CTX.auth.saveCurrentWorkflow());
   close();
   var modal = $("workflowSaveModal");
