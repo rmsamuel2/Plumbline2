@@ -87,6 +87,8 @@ The front-end finds the API through `window.PLUMBLINE_API` (set in
 | POST | `/api/admin/users/:id/password` | superuser: `admin_reset_password()` |
 | POST | `/api/admin/users/:id/revoke-sessions` | superuser: `admin_revoke_sessions()` |
 | POST | `/api/admin/users/:id/active` | superuser: activate / deactivate |
+| GET  | `/api/admin/users/:id/workflows` | superuser: list a user's workflows (audited) |
+| GET/POST | `/api/admin/workflows/:id` · `/api/admin/workflows/:id/versions` | superuser: view a workflow or append an audited edit version |
 | GET  | `/api/admin/audit` | superuser: append-only audit log |
 | POST | `/api/admin/purge-expired-auth` | superuser: `purge_expired_auth()` (pg_cron also runs it nightly on Supabase) |
 | POST | `/api/llm` | LLM proxy — `{intent, payload}` |

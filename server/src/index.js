@@ -794,6 +794,81 @@ app.get("/api/admin/status", requireSuperuser, async (req, res, next) => {
     res.json(row);
   } catch (e) { next(e); }
 });
+app.get("/api/admin/users/:id/workflows", requireSuperuser, async (req, res, next) => {
+  try {
+    const user = await one("select id, username, display_name as \"displayName\" from users where id=$1",
+      [req.params.id]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const rows = await query(
+      "select w.workflow_id as id, w.name, w.description, w.lifecycle, w.visibility, " +
+      " w.created_at as \"createdAt\", w.updated_at as \"savedAt\", " +
+      " v.version_id as \"currentVersionId\", v.version_number as \"versionNumber\", " +
+      " v.kind, v.created_at as \"versionCreatedAt\" " +
+      "from workflow w left join workflow_version v on v.version_id=w.current_version_id " +
+      "where w.owner_user_id=$1 order by w.updated_at desc, lower(w.name)",
+      [req.params.id]);
+    await query("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+      "values ($1,'SU_VIEWED_USER_WORKFLOWS','users',$2,$3)",
+      [req.session.userid, req.params.id, JSON.stringify({ rows: rows.length })]);
+    res.json({ user, workflows: rows });
+  } catch (e) { next(e); }
+});
+app.get("/api/admin/workflows/:id", requireSuperuser, async (req, res, next) => {
+  try {
+    const row = await one(
+      "select w.workflow_id as id, w.name, w.description, w.lifecycle, w.visibility, " +
+      " w.owner_user_id as \"ownerUserId\", u.username as \"ownerUsername\", " +
+      " u.display_name as \"ownerDisplayName\", w.updated_at as \"savedAt\", " +
+      " v.version_id as \"versionId\", v.version_number as \"versionNumber\", " +
+      " v.kind, v.snapshot as workflow, v.config, v.tools_executed as \"toolsExecuted\", " +
+      " v.layout, v.created_at as \"versionCreatedAt\" " +
+      "from workflow w join users u on u.id=w.owner_user_id " +
+      "join workflow_version v on v.version_id=w.current_version_id " +
+      "where w.workflow_id=$1",
+      [req.params.id]);
+    if (!row) return res.status(404).json({ error: "Workflow not found" });
+    await query("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+      "values ($1,'SU_VIEWED_USER_WORKFLOW','workflow',$2,$3)",
+      [req.session.userid, req.params.id,
+       JSON.stringify({ ownerUserId: row.ownerUserId, versionId: row.versionId })]);
+    res.json(row);
+  } catch (e) { next(e); }
+});
+app.post("/api/admin/workflows/:id/versions", requireSuperuser, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const out = await tx(ctx(req), async (t) => {
+      const workflow = await t.o(
+        "select workflow_id, owner_user_id, name from workflow where workflow_id=$1 for update",
+        [req.params.id]);
+      if (!workflow) return null;
+      const created = await createVersion(t, workflow.workflow_id, "EDIT",
+        b.label || "Edited by superuser", b, req.session.userid);
+      await t.q("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+        "values ($1,'SU_EDITED_USER_WORKFLOW','workflow',$2,$3)",
+        [req.session.userid, req.params.id, JSON.stringify({
+          ownerUserId: workflow.owner_user_id,
+          name: workflow.name,
+          versionId: created.version.versionId,
+          versionNumber: created.version.versionNumber
+        })]);
+      return { workflow, created };
+    });
+    if (!out) return res.status(404).json({ error: "Workflow not found" });
+    await logActivity(req.session.userid, "superuser_edit_workflow", {
+      workflowId: req.params.id,
+      ownerUserId: out.workflow.owner_user_id,
+      versionId: out.created.version.versionId
+    });
+    res.status(201).json({
+      ok: true,
+      workflowId: req.params.id,
+      versionId: out.created.version.versionId,
+      versionNumber: out.created.version.versionNumber,
+      normalized: out.created.content
+    });
+  } catch (e) { next(e); }
+});
 app.get("/api/admin/audit", requireSuperuser, async (req, res, next) => {
   try {
     const rows = await query("select audit_id as \"auditId\", actor_user_id as \"actorUserId\", " +

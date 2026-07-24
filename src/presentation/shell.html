@@ -62,7 +62,7 @@
   </section>
   <section id="studioPage" class="plPage" aria-label="Plumbline Studio page">
   <div id="err" style="display:none;background:#B2453C;color:#fff;padding:8px 14px;font:13px monospace"></div>
-  <header class="analysisStudioHeader"><div class="analysisTitleBlock"><div class="analysisTitle">Analysis Studio</div><div class="sub">Current editor workflow and combined Σ value</div></div><div id="analysisHudDock" class="hudDock"></div></header>
+  <header class="analysisStudioHeader"><div class="analysisTitleBlock"><div class="analysisTitle">Analysis Studio</div><div class="sub">Current editor workflow and combined Σ value</div></div><div id="maintenanceEditBanner" class="maintenanceEditBanner" hidden></div><div id="analysisHudDock" class="hudDock"></div></header>
   <div class="topbar analysisToolbar">
     <div id="wfbar"></div>
     <div class="analysisToolbarActions">
@@ -126,7 +126,7 @@
       </nav>
       <section class="maintenancePanel" data-maintenance-panel="users">
         <div class="maintenancePanelHead"><div><h2>User management</h2><p>Passwords are never displayed. Every administrative change is recorded.</p></div><label class="maintenanceSearch">Search users<input id="maintenanceUserSearch" type="search" placeholder="Name, username, email, team…"></label></div>
-        <div class="maintenanceTableWrap"><table class="maintenanceTable"><thead><tr><th>User</th><th>Access</th><th>Activity</th><th>Status</th><th>Controls</th></tr></thead><tbody id="maintenanceUsersBody"></tbody></table></div>
+        <div class="maintenanceTableWrap"><table class="maintenanceTable maintenanceUsersTable"><colgroup><col class="maintenanceUserColumn"><col class="maintenanceAccessColumn"><col class="maintenanceActivityColumn"><col class="maintenanceStatusColumn"><col class="maintenanceControlsColumn"></colgroup><thead><tr><th>User</th><th>Access</th><th>Activity</th><th>Status</th><th>Controls</th></tr></thead><tbody id="maintenanceUsersBody"></tbody></table></div>
       </section>
       <section class="maintenancePanel" data-maintenance-panel="audit" hidden>
         <div class="maintenancePanelHead"><div><h2>Security audit log</h2><p>Append-only administrative and security events from the database.</p></div><button class="btn ghost" id="maintenanceAuditRefresh" type="button">Refresh log</button></div>
@@ -341,9 +341,23 @@
       <div class="maintenanceEyebrow">Superuser confirmation</div>
       <h2 id="maintenanceActionTitle">Confirm action</h2>
       <p id="maintenanceActionMessage"></p>
-      <label id="maintenancePasswordField" hidden>Temporary password <span class="optional">minimum 8 characters</span><input id="maintenanceNewPassword" type="password" autocomplete="new-password"></label>
+      <div id="maintenanceProtectedPassword" class="maintenanceProtectedPassword" hidden><span>Current password</span><strong>••••••••</strong><small>Protected by a one-way hash. It cannot be displayed or recovered.</small></div>
+      <label id="maintenancePasswordField" hidden>New password <span class="optional">minimum 8 characters</span><input id="maintenanceNewPassword" type="password" autocomplete="new-password"></label>
       <div id="maintenanceActionStatus" class="authstatus" hidden></div>
       <div class="maintenanceActionButtons"><button class="btn ghost" id="maintenanceActionCancel" type="button">Cancel</button><button class="btn" id="maintenanceActionConfirm" type="button">Confirm</button></div>
+    </div>
+  </div>
+  <div id="maintenanceWorkflowModal" class="modal" style="display:none">
+    <div class="modalbox maintenanceWorkflowBox" role="dialog" aria-modal="true" aria-labelledby="maintenanceWorkflowTitle">
+      <button class="modalclose" id="maintenanceWorkflowClose" type="button" aria-label="Close">×</button>
+      <div class="maintenanceEyebrow">Superuser workflow access</div>
+      <h2 id="maintenanceWorkflowTitle">User workflows</h2>
+      <p id="maintenanceWorkflowSubtitle">View or edit workflows stored for this account.</p>
+      <div id="maintenanceWorkflowStatus" class="maintenanceStatus" role="status"></div>
+      <div class="maintenanceWorkflowGrid">
+        <aside id="maintenanceWorkflowList" class="maintenanceWorkflowList" aria-label="User workflows"></aside>
+        <section id="maintenanceWorkflowDetail" class="maintenanceWorkflowDetail" aria-label="Workflow view mode"></section>
+      </div>
     </div>
   </div>
   <script type="application/json" id="workflowEditorHtmlB64">@@EDITOR_HTML_B64@@</script>

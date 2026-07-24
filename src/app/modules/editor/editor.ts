@@ -175,6 +175,11 @@ function setupEditorSync() {
         latestEditorSignature = ws_1.editorDataSignature(msg.data);
         if (latestEditorSignature === lastStudioPushSignature)
             return; // echo of a Studio -> Editor push; both screens already agree
+        /* Maintenance edit mode intentionally targets a database workflow
+         * owned by another user. An unsolicited iframe snapshot must not
+         * replace that explicit document while it is being edited. */
+        if (ws_1.getActive() >= 0 && ws_1.D().adminWorkflowEdit)
+            return;
         const studioVisible = (_a = document.getElementById("studioPage")) === null || _a === void 0 ? void 0 : _a.classList.contains("active");
         if (studioVisible)
             importEditorData(msg.data, { openAnalysis: !!msg.openAnalysis, silent: true });

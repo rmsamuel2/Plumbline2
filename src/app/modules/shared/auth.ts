@@ -359,6 +359,23 @@ async function saveCurrentWorkflow() {
   }
   var d = ws_1.D(), name = d.name || d.wf.name || "Workflow";
   try {
+    if (d.adminWorkflowEdit && isSuperuser()) {
+      var adminEdit = d.adminWorkflowEdit;
+      var adminResult = await PData().admin.saveWorkflowVersion(adminEdit.workflowId, {
+        workflow: ws_1.unified(d),
+        config: {},
+        toolsExecuted: ws_1.activeToolIndexes(d),
+        layout: d.pos,
+        label: "Edited in Maintenance by " + (currentUser.username || currentUser.email || "superuser")
+      });
+      adminEdit.versionNumber = adminResult.versionNumber;
+      var adminBanner = byId("maintenanceEditBanner");
+      if (adminBanner) adminBanner.textContent = "Editing @" + adminEdit.ownerUsername +
+        " · Save creates database version " + ((Number(adminEdit.versionNumber) || 0) + 1);
+      dom_1.flash("Saved v" + adminResult.versionNumber + " to @" + adminEdit.ownerUsername + "â€™s workflow.");
+      logHistory("superuser-edit", "Updated â€œ" + name + "â€ for @" + adminEdit.ownerUsername);
+      return;
+    }
     var r = await PData().saveWorkflow({ name: name, workflow: ws_1.unified(d), config: {},
       toolsExecuted: ws_1.activeToolIndexes(d), layout: d.pos });
     dom_1.flash("Saved to database: " + name + (r && r.versionNumber ? " (v" + r.versionNumber + ")" : ""));

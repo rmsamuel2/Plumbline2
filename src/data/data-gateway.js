@@ -197,6 +197,16 @@ window.PlumblineData = (function () {
         return api("/api/admin/users/" + encodeURIComponent(userId) + "/type",
           { method: "POST", body: { userType: userType } });
       },
+      listUserWorkflows: function (userId) {
+        return api("/api/admin/users/" + encodeURIComponent(userId) + "/workflows");
+      },
+      loadWorkflow: function (workflowId) {
+        return api("/api/admin/workflows/" + encodeURIComponent(workflowId));
+      },
+      saveWorkflowVersion: function (workflowId, data) {
+        return api("/api/admin/workflows/" + encodeURIComponent(workflowId) + "/versions",
+          { method: "POST", body: data || {} });
+      },
       status: function () { return api("/api/admin/status"); },
       auditLog: function () { return api("/api/admin/audit"); },
       purgeExpiredAuth: function (retainDays) {

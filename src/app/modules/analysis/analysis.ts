@@ -1872,22 +1872,6 @@ function init() {
     auth_1.renderUserBadge();
 }
 
-/* main.ts:2557-2570 */
-function boot() { try {
-    init();
-}
-catch (err) {
-    const b = document.getElementById("err");
-    if (b) {
-        b.style.display = "block";
-        b.textContent = "Studio failed to start: " + String(err && err.message || err);
-    }
-} }
-document.addEventListener("DOMContentLoaded", boot);
-if (document.readyState !== "loading")
-    boot();
-
-
 /* ---------------------------------------------------------------------------
  * Module contract
  *
@@ -1908,10 +1892,23 @@ if (document.readyState !== "loading")
  * -------------------------------------------------------------------------*/
 function page() { return document.getElementById("studioPage"); }
 
+function renderMaintenanceEditMode() {
+  var banner = document.getElementById("maintenanceEditBanner");
+  if (!banner) return;
+  var documentModel = ws_1.getActive() >= 0 ? ws_1.D() : null;
+  var edit = documentModel && documentModel.adminWorkflowEdit;
+  banner.hidden = !edit;
+  banner.textContent = edit
+    ? "Editing @" + edit.ownerUsername + " · Save creates database version " +
+      ((Number(edit.versionNumber) || 0) + 1)
+    : "";
+}
+
 /* The change hook. This is full() WITHOUT its trailing persist(): workspace
  * owns persistence now and calls persist() itself inside commit(). Leaving the
  * call here would persist twice per commit. */
 function renderAll() {
+  renderMaintenanceEditMode();
   renderWfBar();
   if (ws_1.getActive() === -1) { renderSigma(); syncToolButtons(); return; }
   renderCanvas(); renderTable(); renderInspector();
@@ -1922,6 +1919,11 @@ exports["default"] = {
   mount: function (outlet, params, ctx) {
     this.ctx = ctx;
     CTX = ctx;
+    /* Maintenance can load a user's workflow before Analysis has ever been
+     * mounted. init() normally resets the workspace on its first run, so hold
+     * that explicit document across initialization. */
+    var pendingAdminDocument = ws_1.getActive() >= 0 && ws_1.D().adminWorkflowEdit
+      ? ws_1.D() : null;
 
     /* Let editor.ts reach this screen without requiring it (avoids a cycle). */
     if (ed_1.setAnalysisHooks) ed_1.setAnalysisHooks({
@@ -1939,6 +1941,12 @@ exports["default"] = {
     if (!initialised) {
       initialised = true;
       init();
+      if (pendingAdminDocument) {
+        ws_1.setDocs([pendingAdminDocument]);
+        ws_1.setActive(0);
+        ws_1.setSel(null);
+        ws_1.setLastTool(-2);
+      }
       /* Saving and exploring use the same focused dialogs as the Editor. */
       var save = dom_1.$("btnSaveStudio");
       if (save) save.addEventListener("click", function () {
@@ -1974,7 +1982,13 @@ exports["default"] = {
      * ignores incoming editor data unless #studioPage is visible - and AFTER
      * setAnalysisHooks, because importEditorData renders through those hooks.
      * ------------------------------------------------------------------- */
-    try { ed_1.requestEditorSync({ openAnalysis: true }); } catch (e) { }
+    /* A superuser workflow opened from Maintenance is already the explicit
+     * source of truth. Pulling the iframe here would replace it with whatever
+     * the editor happened to show previously. */
+    var activeDocument = ws_1.getActive() >= 0 ? ws_1.D() : null;
+    if (!(activeDocument && activeDocument.adminWorkflowEdit)) {
+      try { ed_1.requestEditorSync({ openAnalysis: true }); } catch (e) { }
+    }
 
     renderAll();
   },

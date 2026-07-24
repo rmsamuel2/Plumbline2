@@ -5,10 +5,13 @@ __PL.define("studio/modules/maintenance.ts", function (require, exports, module)
 Object.defineProperty(exports, "__esModule", { value: true });
 
 var auth_1 = require("studio/shared/auth.ts");
+var ws_1 = require("studio/shared/workspace.ts");
 
-var state = { users: [], audit: [], status: null, query: "" };
+var state = { users: [], audit: [], status: null, query: "", workflowUser: null,
+  workflows: [], selectedWorkflow: null };
 var pendingAction = null;
 var mounted = false;
+var routeContext = null;
 
 function byId(id) { return document.getElementById(id); }
 function page() { return byId("maintenancePage"); }
@@ -70,6 +73,8 @@ function closeAction() {
   if (password) password.value = "";
   var status = byId("maintenanceActionStatus");
   if (status) { status.hidden = true; status.textContent = ""; status.classList.remove("bad"); }
+  var protectedPassword = byId("maintenanceProtectedPassword");
+  if (protectedPassword) protectedPassword.hidden = true;
 }
 function openAction(options) {
   pendingAction = options;
@@ -77,10 +82,12 @@ function openAction(options) {
   var title = byId("maintenanceActionTitle");
   var message = byId("maintenanceActionMessage");
   var field = byId("maintenancePasswordField");
+  var protectedPassword = byId("maintenanceProtectedPassword");
   var confirm = byId("maintenanceActionConfirm");
   if (title) title.textContent = options.title || "Confirm action";
   if (message) message.textContent = options.message || "";
   if (field) field.hidden = !options.password;
+  if (protectedPassword) protectedPassword.hidden = !options.password;
   if (confirm) {
     confirm.textContent = options.confirmLabel || "Confirm";
     confirm.classList.toggle("danger", !!options.danger);
@@ -117,6 +124,152 @@ async function confirmAction() {
       status.hidden = false;
       status.classList.add("bad");
     }
+  }
+}
+
+function setWorkflowStatus(message, isError) {
+  var target = byId("maintenanceWorkflowStatus");
+  if (!target) return;
+  target.textContent = message || "";
+  target.classList.toggle("bad", !!isError);
+}
+function closeWorkflows() {
+  var modal = byId("maintenanceWorkflowModal");
+  if (modal) modal.style.display = "none";
+  state.workflowUser = null;
+  state.workflows = [];
+  state.selectedWorkflow = null;
+}
+function workflowDocument(detail) {
+  var snapshot = detail && detail.workflow;
+  return snapshot && snapshot.workflow ? snapshot.workflow : (snapshot || {});
+}
+function renderWorkflowDetail(detail) {
+  var target = byId("maintenanceWorkflowDetail");
+  if (!target) return;
+  target.innerHTML = "";
+  if (!detail) {
+    target.appendChild(node("div", "maintenanceWorkflowEmpty",
+      "Select View to inspect a workflow without changing it."));
+    return;
+  }
+  var workflow = workflowDocument(detail);
+  var states = Array.isArray(workflow.states) ? workflow.states : [];
+  var transitions = Array.isArray(workflow.transitions) ? workflow.transitions : [];
+  var header = node("div", "maintenanceWorkflowDetailHead");
+  var heading = node("div", "");
+  heading.appendChild(node("div", "maintenanceEyebrow", "Database view mode"));
+  heading.appendChild(node("h3", "", detail.name || "Untitled workflow"));
+  heading.appendChild(node("p", "", "@" + (detail.ownerUsername || "unknown") +
+    " · version " + (detail.versionNumber || "—") + " · " +
+    dateLabel(detail.versionCreatedAt || detail.savedAt)));
+  header.appendChild(heading);
+  header.appendChild(button("Edit in Studio", "btn", function () {
+    openWorkflowEdit(detail.id, detail);
+  }));
+  target.appendChild(header);
+
+  var metrics = node("div", "maintenanceWorkflowSummary");
+  [["States", states.length], ["Transitions", transitions.length],
+   ["Lifecycle", detail.lifecycle || "ACTIVE"], ["Visibility", detail.visibility || "PRIVATE"]]
+    .forEach(function (item) {
+      var card = node("div", "");
+      card.appendChild(node("span", "", item[0]));
+      card.appendChild(node("strong", "", item[1]));
+      metrics.appendChild(card);
+    });
+  target.appendChild(metrics);
+  var codeLabel = node("div", "maintenanceWorkflowJsonLabel");
+  codeLabel.appendChild(node("strong", "", "Current database snapshot"));
+  codeLabel.appendChild(node("span", "", "Read-only"));
+  target.appendChild(codeLabel);
+  var code = node("pre", "maintenanceWorkflowJson");
+  code.textContent = JSON.stringify(detail.workflow || {}, null, 2);
+  target.appendChild(code);
+}
+function renderWorkflowList() {
+  var target = byId("maintenanceWorkflowList");
+  if (!target) return;
+  target.innerHTML = "";
+  if (!state.workflows.length) {
+    target.appendChild(node("div", "maintenanceWorkflowEmpty", "This account has no workflows."));
+    return;
+  }
+  state.workflows.forEach(function (workflow) {
+    var row = node("article", "maintenanceWorkflowItem" +
+      (state.selectedWorkflow && state.selectedWorkflow.id === workflow.id ? " on" : ""));
+    var copy = node("div", "maintenanceWorkflowItemCopy");
+    copy.appendChild(node("strong", "", workflow.name || "Untitled workflow"));
+    copy.appendChild(node("span", "", "v" + (workflow.versionNumber || "—") +
+      " · " + dateLabel(workflow.savedAt)));
+    row.appendChild(copy);
+    var actions = node("div", "maintenanceWorkflowItemActions");
+    actions.appendChild(button("View", "btn tiny ghost", function () {
+      openWorkflowView(workflow.id);
+    }));
+    actions.appendChild(button("Edit", "btn tiny", function () {
+      openWorkflowEdit(workflow.id);
+    }));
+    row.appendChild(actions);
+    target.appendChild(row);
+  });
+}
+async function openWorkflowView(workflowId) {
+  setWorkflowStatus("Loading the current database version…", false);
+  try {
+    state.selectedWorkflow = await window.PlumblineData.admin.loadWorkflow(workflowId);
+    renderWorkflowList();
+    renderWorkflowDetail(state.selectedWorkflow);
+    setWorkflowStatus("Viewing the latest saved version. No changes can be made in this panel.", false);
+  } catch (error) {
+    setWorkflowStatus(String(error && error.message || error), true);
+  }
+}
+async function openWorkflowEdit(workflowId, loaded) {
+  setWorkflowStatus("Opening the latest database version for editing…", false);
+  try {
+    var detail = loaded && loaded.id === workflowId
+      ? loaded : await window.PlumblineData.admin.loadWorkflow(workflowId);
+    ws_1.ingest(detail.workflow, "Maintenance workflow");
+    var document = ws_1.D();
+    document.name = detail.name || document.name;
+    if (document.wf) document.wf.name = detail.name || document.wf.name;
+    document.adminWorkflowEdit = {
+      workflowId: detail.id,
+      ownerUserId: detail.ownerUserId,
+      ownerUsername: detail.ownerUsername || "user",
+      versionNumber: detail.versionNumber
+    };
+    closeWorkflows();
+    setStatus("Editing " + detail.name + " for @" + detail.ownerUsername +
+      ". Save appends a synchronized database version.", false);
+    if (routeContext) routeContext.navigate("/analysis");
+  } catch (error) {
+    setWorkflowStatus(String(error && error.message || error), true);
+  }
+}
+async function openUserWorkflows(user) {
+  state.workflowUser = user;
+  state.workflows = [];
+  state.selectedWorkflow = null;
+  var modal = byId("maintenanceWorkflowModal");
+  var title = byId("maintenanceWorkflowTitle");
+  var subtitle = byId("maintenanceWorkflowSubtitle");
+  if (title) title.textContent = (user.displayName || user.username || "User") + " workflows";
+  if (subtitle) subtitle.textContent = "View the current database version or open an audited edit for @" +
+    (user.username || "unknown") + ".";
+  if (modal) modal.style.display = "flex";
+  renderWorkflowList();
+  renderWorkflowDetail(null);
+  setWorkflowStatus("Loading workflows…", false);
+  try {
+    var result = await window.PlumblineData.admin.listUserWorkflows(user.id);
+    state.workflows = Array.isArray(result && result.workflows) ? result.workflows : [];
+    renderWorkflowList();
+    setWorkflowStatus(state.workflows.length + " workflow" +
+      (state.workflows.length === 1 ? "" : "s") + " loaded from the database.", false);
+  } catch (error) {
+    setWorkflowStatus(String(error && error.message || error), true);
   }
 }
 
@@ -191,16 +344,20 @@ function renderUsers() {
     row.appendChild(statusCell);
 
     var controls = node("td", "maintenanceUserControls");
-    var reset = button("Reset password", "btn tiny ghost", function () {
+    var controlActions = node("div", "maintenanceUserControlActions");
+    var managePassword = button("Manage password", "btn tiny ghost", function () {
       openAction({
-        title: "Reset password?",
-        message: "Set a temporary password for " + (user.username || user.email) + ". All of that user’s sessions and remembered logins will be revoked.",
-        confirmLabel: "Reset password",
-        danger: true,
+        title: "Manage password",
+        message: "The current password cannot be revealed because only a one-way hash is stored. Set a replacement password for " +
+          (user.username || user.email) + ". All sessions and remembered logins will be revoked.",
+        confirmLabel: "Change password",
         password: true,
-        success: "Password reset and sessions revoked.",
+        success: "Password changed and sessions revoked.",
         run: function (newPassword) { return window.PlumblineData.admin.resetPassword(user.id, newPassword); }
       });
+    });
+    var workflows = button("Workflows", "btn tiny ghost", function () {
+      openUserWorkflows(user);
     });
     var revoke = button("Revoke sessions", "btn tiny ghost", function () {
       openAction({
@@ -213,11 +370,13 @@ function renderUsers() {
       });
     });
     if (isSelf) {
-      reset.disabled = true; reset.title = "Change your own password in Settings.";
+      managePassword.disabled = true;
+      managePassword.title = "Change your own password in Settings.";
       revoke.disabled = true; revoke.title = "Your current maintenance session is protected.";
     }
-    controls.appendChild(reset);
-    controls.appendChild(revoke);
+    controlActions.appendChild(workflows);
+    controlActions.appendChild(managePassword);
+    controlActions.appendChild(revoke);
     var active = button(user.isActive ? "Deactivate" : "Activate",
       "btn tiny " + (user.isActive ? "danger" : "ghost"), function () {
         openAction({
@@ -231,7 +390,8 @@ function renderUsers() {
         });
       });
     if (isSelf && user.isActive) { active.disabled = true; active.title = "You cannot deactivate your own account."; }
-    controls.appendChild(active);
+    controlActions.appendChild(active);
+    controls.appendChild(controlActions);
     row.appendChild(controls);
     body.appendChild(row);
   });
@@ -300,6 +460,7 @@ exports["default"] = {
   mount: function (outlet, params, ctx) {
     if (!auth_1.isSuperuser()) { ctx.navigate("/home"); return; }
     mounted = true;
+    routeContext = ctx;
     this.bound = [];
     var self = this;
     function bind(target, event, handler) {
@@ -325,6 +486,7 @@ exports["default"] = {
     bind(byId("maintenanceActionCancel"), "click", closeAction);
     bind(byId("maintenanceActionConfirm"), "click", confirmAction);
     bind(byId("maintenanceNewPassword"), "keydown", function (event) { if (event.key === "Enter") confirmAction(); });
+    bind(byId("maintenanceWorkflowClose"), "click", closeWorkflows);
     bind(byId("maintenancePurge"), "click", function () {
       var input = byId("maintenanceRetainDays");
       var days = Math.max(1, Math.min(365, Number(input && input.value) || 30));
@@ -342,7 +504,9 @@ exports["default"] = {
   },
   unmount: function () {
     mounted = false;
+    routeContext = null;
     closeAction();
+    closeWorkflows();
     for (var i = 0; i < (this.bound || []).length; i += 1)
       this.bound[i][0].removeEventListener(this.bound[i][1], this.bound[i][2]);
     this.bound = [];
