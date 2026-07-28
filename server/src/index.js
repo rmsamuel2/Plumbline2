@@ -43,6 +43,9 @@ const SESSION_SECRET = process.env.SESSION_SECRET || "dev-only-change-me";
 const SESSION_HOURS = 12;
 const REMEMBER_DAYS = 30;
 const cookieBase = { httpOnly: true, sameSite: "strict", secure: IS_PROD, path: "/" };
+const AI_EDIT_WINDOW_MS = 60e3;
+const AI_EDIT_LIMIT = 8;
+const aiEditRequests = new Map();
 
 /* ---- signed session cookie + hashed remember token ----------------------- */
 function sign(id) {
@@ -113,6 +116,23 @@ function requireSuperuser(req, res, next) {
   if (!req.session) return res.status(401).json({ error: "Not signed in" });
   if (req.session.usertype !== "superuser")
     return res.status(403).json({ error: "Superuser only" });
+  next();
+}
+function limitAiEdits(req, res, next) {
+  const now = Date.now();
+  const userId = String(req.session.userid);
+  const recent = (aiEditRequests.get(userId) || [])
+    .filter(function (at) { return now - at < AI_EDIT_WINDOW_MS; });
+  if (recent.length >= AI_EDIT_LIMIT) {
+    res.set("Retry-After", String(Math.ceil(
+      (AI_EDIT_WINDOW_MS - (now - recent[0])) / 1000
+    )));
+    return res.status(429).json({
+      error: "Too many AI edits. Please wait a moment and try again."
+    });
+  }
+  recent.push(now);
+  aiEditRequests.set(userId, recent);
   next();
 }
 function ctx(req) {
@@ -898,6 +918,25 @@ app.post("/api/llm", async (req, res, next) => {
     res.json(await llm.handle(intent, payload, model));
   } catch (e) {
     if (e.status === 400) return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+
+/* Authenticated AI workflow editing. The response is preview-only: the
+ * browser owns undo/apply, and a separate explicit save creates a DB version. */
+app.post("/api/ai/workflow-edit", requireSession, limitAiEdits, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const result = await llm.editWorkflow(b.workflow, b.instruction);
+    await logActivity(req.session.userid, "ai_workflow_edit", {
+      stateCount: result.workflow.states.length,
+      transitionCount: result.workflow.transitions.length,
+      instructionLength: String(b.instruction || "").length
+    });
+    res.json(result);
+  } catch (e) {
+    if (e && e.expose && Number.isInteger(e.status))
+      return res.status(e.status).json({ error: e.message });
     next(e);
   }
 });

@@ -226,6 +226,97 @@
       white-space: nowrap;
     }
 
+    .aiEditPanel {
+      margin-top: 5px;
+      border: 1px solid #b7ded8;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #f0fdfa 0%, #f8fafc 100%);
+      overflow: hidden;
+    }
+
+    .aiEditPanel summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 6px 10px;
+      color: #115e59;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      list-style: none;
+      user-select: none;
+    }
+
+    .aiEditPanel summary::-webkit-details-marker { display: none; }
+    .aiEditPanel summary::after {
+      content: "›";
+      margin-left: auto;
+      font-size: 18px;
+      line-height: 1;
+      transform: rotate(90deg);
+      transition: transform .18s ease;
+    }
+    .aiEditPanel[open] summary::after { transform: rotate(-90deg); }
+    .aiEditIcon {
+      display: inline-grid;
+      width: 20px;
+      height: 20px;
+      place-items: center;
+      border-radius: 6px;
+      background: #0f766e;
+      color: #fff;
+      font-size: 12px;
+    }
+    .aiEditSummaryHint {
+      color: #64748b;
+      font-weight: 500;
+    }
+    .aiEditBody {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) auto;
+      gap: 8px;
+      padding: 0 10px 10px;
+    }
+    .aiEditBody textarea {
+      width: 100%;
+      min-height: 58px;
+      max-height: 150px;
+      resize: vertical;
+      border: 1px solid #99cfc7;
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: #fff;
+      color: #172033;
+      line-height: 1.35;
+    }
+    .aiEditBody textarea:focus {
+      outline: 3px solid rgba(15,118,110,.14);
+      border-color: #0f766e;
+    }
+    .aiEditActions {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .aiEditActions button { white-space: nowrap; }
+    #applyAiEdit {
+      border-color: #0f766e;
+      background: #0f766e;
+      color: #fff;
+    }
+    .aiEditStatus {
+      grid-column: 1 / -1;
+      min-height: 17px;
+      color: #47605d;
+      font-size: 12px;
+    }
+    .aiEditStatus.error { color: #b91c1c; }
+    @media(max-width:760px) {
+      .aiEditBody { grid-template-columns: 1fr; }
+      .aiEditActions { justify-content: flex-end; }
+    }
+
     .main {
       min-height: 0;
       height: 100%;
@@ -351,6 +442,7 @@
     .app.editMode .cloudGroup,
     .app.editMode .fileGroup,
     .app.editMode .cloudPanel,
+    .app.editMode .aiEditPanel,
     .app.editMode .status {
       display: none !important;
     }
@@ -1450,6 +1542,13 @@
       pointer-events: auto;
     }
     .titleRow { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+    .titleWithInfo { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+    .featureInfo { position: relative; flex: 0 0 auto; margin-top: 1px; }
+    .featureInfo summary { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: #f8fafc; color: var(--accent); font: 800 12px/1 Georgia, serif; cursor: pointer; list-style: none; }
+    .featureInfo summary::-webkit-details-marker { display: none; }
+    .featureInfo summary:hover,.featureInfo summary:focus-visible { border-color: var(--accent); background: #eff6ff; outline: none; }
+    .featureInfoCard { position: absolute; top: 28px; left: 0; z-index: 80; width: min(310px, calc(100vw - 32px)); padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 30px rgba(15,23,42,.16); color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .featureInfoCard strong { display: block; margin-bottom: 3px; color: var(--ink); }
     .userBadge {
       font-size: 12px;
       color: #475467;
@@ -1591,6 +1690,13 @@
     html[data-theme="dark"] .newProcessHeader,.newProcessSection { border-color:var(--line) }
     html[data-theme="dark"] .newProcessHeader p,.newProcessField { color:var(--muted) }
     html[data-theme="dark"] .newProcessField input,html[data-theme="dark"] .newProcessField textarea,html[data-theme="dark"] .newProcessField select,html[data-theme="dark"] .newProcessClose { background:#111c29;color:var(--ink);border-color:var(--line) }
+    html[data-theme="dark"] .featureInfo summary { background:#111c29;color:var(--accent);border-color:var(--line) }
+    html[data-theme="dark"] .featureInfoCard { background:#172231;color:var(--muted);border-color:var(--line) }
+    html[data-theme="dark"] .aiEditPanel { background:linear-gradient(135deg,#13332f 0%,#172231 100%);border-color:#2d6f66 }
+    html[data-theme="dark"] .aiEditPanel summary { color:#79d7c8 }
+    html[data-theme="dark"] .aiEditBody textarea { background:#111c29;color:var(--ink);border-color:#397c72 }
+    html[data-theme="dark"] .aiEditStatus { color:var(--muted) }
+    html[data-theme="dark"] .aiEditStatus.error { color:#fca5a5 }
 
   </style>
 </head>
@@ -1598,14 +1704,20 @@
   <div class="app">
     <header class="topbar">
       <div class="titleRow">
-        <div class="title">
-          <h1>Workflow Editor</h1>
-          <p id="processDescription">Load a process, then edit categories, named boxes, connectors, and per-box task cost/time. Cost/time here is only for carrying out the task in each box.</p>
+        <div class="titleWithInfo">
+          <div class="title">
+            <h1>Workflow Editor</h1>
+            <p id="processDescription">Load a process, then edit categories, named boxes, connectors, and per-box task cost/time. Cost/time here is only for carrying out the task in each box.</p>
+          </div>
+          <details class="featureInfo">
+            <summary aria-label="About the Workflow Editor" title="About the Workflow Editor">i</summary>
+            <div class="featureInfoCard"><strong>Workflow Editor</strong>Add categories, boxes, connections, dependencies, owners, time, and cost. Create a blank workflow or open a saved one to begin.</div>
+          </details>
         </div>
       </div>
       <div class="toolbarWrap">
         <div class="controls" aria-label="Visualizer controls">
-          <input id="processKey" type="hidden" value="ecommerce_order">
+          <input id="processKey" type="hidden" value="">
           <div class="controlGroup presetGroup" aria-label="Process controls">
             <button id="btnSaveProcess" type="button" title="Save this workflow">Save</button>
             <button id="btnExploreSaved" type="button" title="Explore saved and example workflows">Explore Saved</button>
@@ -1627,6 +1739,17 @@
             <button id="pasteBox" type="button" title="Paste the copied box (Ctrl+V)">Paste</button>
           </div>
         </div>
+        <details id="aiEditPanel" class="aiEditPanel">
+          <summary><span class="aiEditIcon" aria-hidden="true">&#10024;</span><span>AI Edit</span><span class="aiEditSummaryHint">Describe a change and Plumbline will update the open workflow.</span></summary>
+          <div class="aiEditBody">
+            <textarea id="aiEditInstruction" maxlength="4000" placeholder="Example: Add a manager approval after the risk review, with approved and rejected paths." aria-label="Describe workflow changes"></textarea>
+            <div class="aiEditActions">
+              <button id="aiUndoEdit" type="button" disabled>Undo AI edit</button>
+              <button id="applyAiEdit" type="button">Apply with AI</button>
+            </div>
+            <div id="aiEditStatus" class="aiEditStatus" role="status" aria-live="polite">AI edits are added to the same undo history as manual changes.</div>
+          </div>
+        </details>
       </div>
     </header>
 
@@ -2439,6 +2562,7 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     function updateUndoRedoButtons() {
       const undoButton = document.getElementById("undoEdit");
       const redoButton = document.getElementById("redoEdit");
+      const aiUndoButton = document.getElementById("aiUndoEdit");
       if (undoButton) {
         undoButton.disabled = undoStack.length === 0;
         undoButton.title = undoStack.length ? `Undo: ${undoStack[undoStack.length - 1].label || "previous edit"}` : "No edits to undo";
@@ -2446,6 +2570,11 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       if (redoButton) {
         redoButton.disabled = redoStack.length === 0;
         redoButton.title = redoStack.length ? `Redo: ${redoStack[redoStack.length - 1].label || "next edit"}` : "No edits to redo";
+      }
+      if (aiUndoButton) {
+        const lastChangeIsAi = undoStack.length > 0 && undoStack[undoStack.length - 1].label === "AI workflow edit";
+        aiUndoButton.disabled = !lastChangeIsAi;
+        aiUndoButton.title = lastChangeIsAi ? "Restore the workflow from before the last AI edit" : "The latest change is not an AI edit";
       }
     }
 
@@ -2552,6 +2681,137 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       const entry = redoStack.pop();
       undoStack.push({ ...makeHistoryEntry(entry.label), label: entry.label });
       restoreHistoryEntry(entry, `Redid ${entry.label || "edit"}.`);
+    }
+
+    function setAiEditStatus(message, isError = false) {
+      const el = document.getElementById("aiEditStatus");
+      if (!el) return;
+      el.textContent = message || "";
+      el.className = isError ? "aiEditStatus error" : "aiEditStatus";
+    }
+
+    function validateAiWorkflow(candidate) {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        throw new Error("The AI returned an invalid workflow.");
+      }
+      if (!candidate.process || typeof candidate.process !== "object") {
+        throw new Error("The AI response is missing the workflow process.");
+      }
+      ["stages", "states", "transitions"].forEach(field => {
+        if (!Array.isArray(candidate[field])) {
+          throw new Error(`The AI response is missing ${field}.`);
+        }
+      });
+      const stageKeys = new Set(candidate.stages.map(stage => String(stage.stage_key || "")));
+      const stateKeys = new Set(candidate.states.map(state => String(state.state_key || "")));
+      if (stageKeys.has("") || stateKeys.has("")) {
+        throw new Error("The AI returned a category or box without an ID.");
+      }
+      if (stageKeys.size !== candidate.stages.length || stateKeys.size !== candidate.states.length) {
+        throw new Error("The AI returned duplicate category or box IDs.");
+      }
+      candidate.states.forEach(state => {
+        if (!stageKeys.has(String(state.stage_key || ""))) {
+          throw new Error(`Box "${state.name || state.state_key}" belongs to a missing category.`);
+        }
+      });
+      candidate.transitions.forEach(transition => {
+        if (!stateKeys.has(String(transition.from_state_key || "")) ||
+            !stateKeys.has(String(transition.to_state_key || ""))) {
+          throw new Error(`Connection "${transition.event_name || transition.transition_key || "unnamed"}" points to a missing box.`);
+        }
+      });
+      return candidate;
+    }
+
+    function beginUntitledDraft(reason = "edit") {
+      if (currentData) return false;
+      currentData = makeBlankProcess("Untitled Workflow", {
+        description: "A blank workflow. Add categories, boxes, and connections to build the flow.",
+        category: "New Category"
+      });
+      selected = { type: null, key: null };
+      pendingConnectionFrom = null;
+      spacingExpandedApplied = false;
+      refreshDerivedFields(currentData);
+      document.getElementById("processKey").value = currentData.process.process_key;
+      updateAddConnectionButton();
+      render(currentData);
+      resetUndoRedoHistory();
+      syncCurrentProcessOption(true);
+      recenterSoon(false);
+      setStatus(reason === "ai"
+        ? "Started an untitled draft for AI editing."
+        : "Started an untitled draft. Your first category is ready to edit.");
+      return true;
+    }
+
+    let aiEditInFlight = false;
+    let aiEditAccountAvailable = null;
+    async function requestAiWorkflowEdit() {
+      const instructionEl = document.getElementById("aiEditInstruction");
+      const applyButton = document.getElementById("applyAiEdit");
+      if (aiEditInFlight) return;
+      const instruction = String(instructionEl?.value || "").trim();
+      if (!instruction) {
+        setAiEditStatus("Describe the change you want first.", true);
+        instructionEl?.focus();
+        return;
+      }
+      if (aiEditAccountAvailable === false) {
+        setAiEditStatus("Sign in with an account to use Claude AI Edit.", true);
+        requestAuth("login");
+        return;
+      }
+      beginUntitledDraft("ai");
+
+      aiEditInFlight = true;
+      applyButton.disabled = true;
+      applyButton.textContent = "Applying…";
+      setAiEditStatus("Claude is reviewing the workflow and mapping your requested changes…");
+      try {
+        let result;
+        const gateway = window.parent && window.parent !== window
+          ? window.parent.PlumblineData
+          : window.PlumblineData;
+        if (gateway && typeof gateway.aiEditWorkflow === "function") {
+          result = await gateway.aiEditWorkflow(cloneData(currentData), instruction);
+        } else {
+          const response = await fetch("/api/ai/workflow-edit", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workflow: cloneData(currentData), instruction })
+          });
+          let responseBody = null;
+          try { responseBody = await response.json(); } catch {}
+          if (!response.ok) throw new Error(responseBody?.error || `AI edit failed (HTTP ${response.status}).`);
+          result = responseBody;
+        }
+
+        const candidate = result?.workflow || result?.data?.workflow || result?.data || result;
+        if (!candidate) throw new Error("The AI returned no workflow.");
+        const edited = validateAiWorkflow(cloneData(candidate));
+        selected = { type: null, key: null };
+        pendingConnectionFrom = null;
+        spacingExpandedApplied = false;
+        currentData = edited;
+        refreshDerivedFields(currentData);
+        document.getElementById("processKey").value = currentData.process.process_key || "";
+        updateAddConnectionButton();
+        render(currentData);
+        commitUndoSnapshot("AI workflow edit");
+        syncCurrentProcessOption(true);
+        scheduleEditorSnapshot("ai-edit");
+        setAiEditStatus("AI changes applied. Use Undo AI edit or the editor Undo button to restore the previous version.");
+        setStatus("AI workflow edit applied.");
+      } catch (error) {
+        setAiEditStatus(error?.message || "The AI edit could not be applied.", true);
+      } finally {
+        aiEditInFlight = false;
+        applyButton.disabled = false;
+        applyButton.textContent = "Apply with AI";
+      }
     }
 
     function setEditMode(enabled) {
@@ -5512,6 +5772,13 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     }
 
     function addStage() {
+      if (beginUntitledDraft("category")) {
+        const stage = currentData.stages[0];
+        selected = { type: "stage", key: stage.stage_key };
+        render(currentData);
+        showStage(stage);
+        return;
+      }
       const key = uniqueKey("stage_", currentData.stages.map(stage => stage.stage_key));
       const model = layout(currentData);
       const lastPanelRight = currentData.stages.length
@@ -5535,6 +5802,7 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     }
 
     function addState() {
+      beginUntitledDraft("box");
       const stage = selectedStageForNewBox();
       const placement = nextFreeBoxPosition(stage);
       const keyPrefix = currentData.process.process_key === "atm_session" ? "A" : currentData.process.process_key === "rideshare_trip" ? "R" : currentData.process.process_key === "hospital_er" ? "E" : "S";
@@ -6131,11 +6399,15 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       } catch (e) {}
       setStatus("Open the full Plumbline app to sign in \u2014 the editor alone has no account store.", true);
     }
-    function setEditorUser(label) {
+    function setEditorUser(label, guest = false) {
       const badge = document.getElementById("editorUserBadge");
       if (!badge) return;
       if (label) { badge.textContent = label; badge.classList.add("signedIn"); }
       else { badge.textContent = "not signed in"; badge.classList.remove("signedIn"); }
+      aiEditAccountAvailable = Boolean(label && !guest);
+      if (!aiEditAccountAvailable) {
+        setAiEditStatus("Sign in with an account to use Claude AI Edit. Manual editing remains available.");
+      }
     }
     const loginBtnEl = document.getElementById("btnLogin");
     const signupBtnEl = document.getElementById("btnSignup");
@@ -6144,13 +6416,26 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     window.addEventListener("message", authEvent => {
       const d = authEvent.data;
       if (d && d.type === "plumbline-auth-state") {
-        setEditorUser(d.user || "");
+        setEditorUser(d.user || "", Boolean(d.guest));
         document.documentElement.setAttribute("data-theme", d.darkMode ? "dark" : "light");
       }
     });
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "plumbline-editor-ready" }, "*");
+      }
+    } catch {}
 
     document.getElementById("undoEdit").addEventListener("click", undoLastEdit);
     document.getElementById("redoEdit").addEventListener("click", redoLastEdit);
+    document.getElementById("aiUndoEdit").addEventListener("click", undoLastEdit);
+    document.getElementById("applyAiEdit").addEventListener("click", requestAiWorkflowEdit);
+    document.getElementById("aiEditInstruction").addEventListener("keydown", event => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        requestAiWorkflowEdit();
+      }
+    });
     document.getElementById("toggleEditMode").addEventListener("click", () => setEditMode(!isEditMode));
     document.getElementById("toggleConnectMode").addEventListener("click", () => setConnectMode(!connectMode));
     document.addEventListener("keydown", event => {
@@ -6365,7 +6650,6 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     initializeSideToggle();
     enableBackgroundPan();
     resetDefaultViewToggles();
-    loadExample("ecommerce_order");
     loadCloudSettings();
   </script>
 </body>

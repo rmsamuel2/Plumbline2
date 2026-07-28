@@ -172,6 +172,14 @@ window.PlumblineData = (function () {
       return api("/api/v2/versions/" + encodeURIComponent(versionId) + "/analyses");
     },
 
+    /* ---- AI-assisted workflow editing ----------------------------------------- */
+    aiEditWorkflow: function (workflow, instruction) {
+      return api("/api/ai/workflow-edit", {
+        method: "POST",
+        body: { workflow: workflow, instruction: instruction }
+      });
+    },
+
     /* ---- online history (activity_log) ------------------------------------------ */
     appendHistory: function (a, m) {
       return api("/api/history", { method: "POST", body: { action: a, meta: m } });

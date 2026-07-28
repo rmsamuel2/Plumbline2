@@ -211,7 +211,7 @@ async function createUser() {
     await loadSignedInAccount();
     logHistory("login", "Created account");
     showAuth(false);
-    if (CTX) CTX.navigate("/editor");
+    if (CTX) CTX.navigate("/home");
   } catch (e) { dataProblem(e); }
 }
 
@@ -227,7 +227,7 @@ async function signIn() {
     await loadSignedInAccount();
     logHistory("login", "Signed in");
     showAuth(false);
-    if (CTX) CTX.navigate("/editor");
+    if (CTX) CTX.navigate("/home");
   } catch (e) { dataProblem(e); }
 }
 
