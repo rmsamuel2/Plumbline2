@@ -193,6 +193,10 @@ window.PlumblineData = (function () {
         return api("/api/admin/users/" + encodeURIComponent(userId) + "/active",
           { method: "POST", body: { isActive: !!isActive } });
       },
+      setUserType: function (userId, userType) {
+        return api("/api/admin/users/" + encodeURIComponent(userId) + "/type",
+          { method: "POST", body: { userType: userType } });
+      },
       auditLog: function () { return api("/api/admin/audit"); },
       purgeExpiredAuth: function (retainDays) {
         return api("/api/admin/purge-expired-auth",

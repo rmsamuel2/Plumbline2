@@ -724,6 +724,20 @@ app.post("/api/admin/users/:id/active", requireSuperuser, async (req, res, next)
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
+app.post("/api/admin/users/:id/type", requireSuperuser, async (req, res, next) => {
+  try {
+    const userType = String((req.body || {}).userType || "");
+    if (!["user", "analyst", "collaborator", "superuser"].includes(userType))
+      return res.status(400).json({ error: "userType must be user, analyst, collaborator or superuser" });
+    const row = await query("update users set user_type = $2 where id = $1 returning id",
+      [req.params.id, userType]);
+    if (!row.length) return res.status(404).json({ error: "User not found" });
+    await query("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+      "values ($1,'SU_SET_USER_TYPE','users',$2,$3)",
+      [req.session.userid, req.params.id, JSON.stringify({ userType })]);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
 app.get("/api/admin/audit", requireSuperuser, async (req, res, next) => {
   try {
     res.json(await query("select audit_id as \"auditId\", actor_user_id as \"actorUserId\", " +
