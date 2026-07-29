@@ -724,6 +724,8 @@ app.post("/api/admin/users/:id/active", requireSuperuser, async (req, res, next)
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
+/* Superusers may set any user_type, including 'superuser', to allow
+ * bootstrapping additional admins. Every change is written to audit_log. */
 app.post("/api/admin/users/:id/type", requireSuperuser, async (req, res, next) => {
   try {
     const userType = String((req.body || {}).userType || "");

@@ -2,16 +2,15 @@
 --
 -- A collaborator has the same analytical capabilities as an analyst but is
 -- identified separately (e.g. for external partners or team members who do
--- not hold a full analyst seat). Superusers can promote a user to collaborator
--- via POST /api/admin/users/:id/type.
+-- not hold a full analyst seat). Superusers can promote a user to any type,
+-- including collaborator, via POST /api/admin/users/:id/type.
 --
 -- Idempotent: safe to run more than once.
 
 -- 1. Widen the user_type check constraint to include 'collaborator'.
---    The anonymous constraint is named <table>_<column>_check by Postgres.
-do $$ begin
-  alter table users drop constraint if exists users_user_type_check;
-exception when undefined_object then null; end $$;
+--    Postgres names anonymous CHECK constraints <table>_<column>_check.
+--    We drop that name (the one 001_init.sql creates) and replace it.
+alter table users drop constraint if exists users_user_type_check;
 
 alter table users
   add constraint users_user_type_check
