@@ -10,7 +10,7 @@
 #    2. Creates server\.env from the template on first run and opens it in
 #       Notepad so you can paste the Supabase connection string — then re-run.
 #    3. npm install (server dependencies, first run only).
-#    4. npm run migrate — applies migrations\001..003 to the database
+#    4. npm run migrate — applies every migrations\*.sql file through 006
 #       (idempotent; safe to re-run any time).
 #    5. python build.py --check — builds dist\Plumbline_Studio_V2.html.
 #    6. Starts the Plumbline API in its own window.
@@ -103,7 +103,7 @@ if (-not (Test-Path (Join-Path $root 'server\node_modules'))) {
 }
 
 # ---- 4. migrate the database (idempotent) -----------------------------------
-Write-Host 'Applying database migrations (001 base, 002 production schema, 003 security patch)...' -ForegroundColor Cyan
+Write-Host 'Applying database migrations through 006...' -ForegroundColor Cyan
 Push-Location (Join-Path $root 'server')
 npm run migrate
 $migrateExit = $LASTEXITCODE
@@ -146,15 +146,16 @@ if ($alreadyUp) {
 # ---- 7. open the app on the Home page ----------------------------------------
 $app = Join-Path $root 'dist\Plumbline_Studio_V2.html'
 if (-not (Test-Path $app)) { throw ('Built app not found at ' + $app) }
+$appUrl = 'http://localhost:' + $Port + '/#/home'
 if (-not $NoOpen) {
     Write-Host 'Opening the app (Home page)...' -ForegroundColor Cyan
-    Start-Process $app
+    Start-Process $appUrl
 }
 
 Write-Host ''
 Write-Host '================================================================' -ForegroundColor Green
 Write-Host ' Plumbline is running.'
-Write-Host ('   App    : ' + $app)
+Write-Host ('   App    : ' + $appUrl)
 Write-Host ('   API    : http://localhost:' + $Port + '   (close the "Plumbline API" window to stop)')
 Write-Host '   Sign in: rob / password   or   max / password'
 Write-Host '   >>> Change BOTH seeded passwords immediately:'

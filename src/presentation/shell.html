@@ -76,7 +76,7 @@
       </div>
       <div class="analysisToolbarGroup analysisToolbarGroupPrimary" aria-label="Save and analysis controls">
         <button class="btn" id="btnSaveStudio">Save</button>
-        <button class="btn ghost" id="btnExploreSavedStudio">Explore Saved</button>
+        <button class="btn ghost" id="btnExploreSavedStudio">Explorer</button>
         <button class="btn ghost" id="btnDownload">Download</button>
         <button class="btn primary" id="btnAll">Apply all improvements</button>
       </div>
@@ -185,9 +185,24 @@
         <button class="btn ghost" id="libClose" aria-label="Close">&times;</button>
       </div>
       <input id="libSearch" type="text" placeholder="Find a workflow or folder" autocomplete="off">
+      <div class="libSelectionHint">Shift-click selects a range. Ctrl/Cmd-click selects individual workflows.</div>
       <div id="libTree" class="libTree"></div>
 
       <div class="libFoot">
+        <div id="libBatch" class="libBatch" hidden>
+          <div class="libBatchSummary">
+            <strong id="libBatchCount">0 workflows selected</strong>
+            <button class="btn ghost" id="libBatchClear" type="button">Clear</button>
+          </div>
+          <div class="libBatchMoveRow">
+            <select id="libBatchTarget" aria-label="Move selected workflows to folder"></select>
+            <button class="btn ghost" id="libBatchMove" type="button">Move</button>
+          </div>
+          <div class="libBatchActions">
+            <button class="btn ghost" id="libBatchDuplicate" type="button">Duplicate</button>
+            <button class="btn danger" id="libBatchDelete" type="button">Delete</button>
+          </div>
+        </div>
         <button class="btn primary" id="libOpen">Open</button>
       </div>
       <div id="libStatus" class="libStatus"></div>

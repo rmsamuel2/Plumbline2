@@ -77,8 +77,10 @@ build.cmd                 # Python if present, else pure PowerShell
 python build.py           # or:  python build.py --check
 ```
 
-Output: **`dist/Plumbline_Studio_V2.html`** — open it in any browser. The
-Python and PowerShell builders produce a byte-identical file.
+Output: **`dist/Plumbline_Studio_V2.html`**. The Python and PowerShell builders
+produce a byte-identical file. For authentication, database access, and AI
+editing, start `server/` and open **`http://localhost:8080/#/home`** so the app
+and API share an HTTP origin.
 
 ## Develop without building
 

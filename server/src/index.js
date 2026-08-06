@@ -8,6 +8,7 @@
 //                 purge_expired_auth() · append-only audit
 //   004 settings  account-backed application preferences (JSONB)
 //   005 ordering  persistent workflow library ordering
+//   006 AI edits  account-scoped AI workflow edit history
 //
 // Every authenticated request runs inside db.tx(), which sets the RLS context
 // (app.user_id / app.is_superuser) the schema's policies read.
@@ -146,7 +147,7 @@ async function logActivity(userId, action, meta) {
 
 /* ---- health ---------------------------------------------------------------- */
 app.get("/api/health", async (_req, res, next) => {
-  try { await query("select 1"); res.json({ ok: true, schema: "001-005" }); }
+  try { await query("select 1"); res.json({ ok: true, schema: "001-006" }); }
   catch (e) { next(e); }
 });
 
@@ -924,16 +925,54 @@ app.post("/api/llm", async (req, res, next) => {
 
 /* Authenticated AI workflow editing. The response is preview-only: the
  * browser owns undo/apply, and a separate explicit save creates a DB version. */
+app.get("/api/ai/workflow-edits", requireSession, async (req, res, next) => {
+  try {
+    const requestedLimit = Number(req.query.limit || 30);
+    const limit = Math.max(1, Math.min(100,
+      Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 30));
+    const rows = await tx(ctx(req), ({ q }) => q(
+      "select edit_id as \"editId\", instruction, summary, created_at as \"createdAt\", " +
+      "coalesce(result_workflow->'process'->>'name', 'Untitled Workflow') as \"workflowName\", " +
+      "jsonb_array_length(coalesce(result_workflow->'states', '[]'::jsonb)) as \"stateCount\", " +
+      "jsonb_array_length(coalesce(result_workflow->'transitions', '[]'::jsonb)) as \"transitionCount\" " +
+      "from ai_workflow_edit where user_id=$1 order by created_at desc limit $2",
+      [req.session.userid, limit]
+    ));
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+app.get("/api/ai/workflow-edits/:id", requireSession, async (req, res, next) => {
+  try {
+    const row = await tx(ctx(req), ({ o }) => o(
+      "select edit_id as \"editId\", instruction, summary, " +
+      "source_workflow as \"sourceWorkflow\", result_workflow as workflow, " +
+      "created_at as \"createdAt\" from ai_workflow_edit " +
+      "where edit_id=$1 and user_id=$2",
+      [req.params.id, req.session.userid]
+    ));
+    if (!row) return res.status(404).json({ error: "AI edit not found" });
+    res.json(row);
+  } catch (e) { next(e); }
+});
+
 app.post("/api/ai/workflow-edit", requireSession, limitAiEdits, async (req, res, next) => {
   try {
     const b = req.body || {};
     const result = await llm.editWorkflow(b.workflow, b.instruction);
+    const history = await tx(ctx(req), ({ o }) => o(
+      "insert into ai_workflow_edit(user_id,instruction,summary,source_workflow,result_workflow) " +
+      "values ($1,$2,$3,$4::jsonb,$5::jsonb) returning edit_id as \"editId\", created_at as \"createdAt\"",
+      [req.session.userid, String(b.instruction || "").trim(), result.summary || "",
+       JSON.stringify(b.workflow), JSON.stringify(result.workflow)]
+    ));
     await logActivity(req.session.userid, "ai_workflow_edit", {
       stateCount: result.workflow.states.length,
       transitionCount: result.workflow.transitions.length,
-      instructionLength: String(b.instruction || "").length
+      instructionLength: String(b.instruction || "").length,
+      editId: history.editId
     });
-    res.json(result);
+    res.json(Object.assign({}, result, history));
   } catch (e) {
     if (e && e.expose && Number.isInteger(e.status))
       return res.status(e.status).json({ error: e.message });
@@ -959,7 +998,7 @@ if (require.main === module) {
       process.exitCode = 1;
       return;
     }
-    console.log("Plumbline API (schema 001-005) on :" + PORT);
+    console.log("Plumbline API (schema 001-006) on :" + PORT);
   });
   app.locals.httpServer = httpServer;
 }

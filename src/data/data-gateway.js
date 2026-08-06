@@ -32,17 +32,28 @@ window.PlumblineData = (function () {
   async function api(path, opts) {
     opts = opts || {};
     var res;
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var timeoutMs = Number(opts.timeoutMs);
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) timeoutMs = 10000;
+    var timeout = controller ? setTimeout(function () { controller.abort(); }, timeoutMs) : null;
     try {
       res = await fetch(base + path, {
         method: opts.method || "GET",
         credentials: "include",
         headers: opts.body ? { "Content-Type": "application/json" } : undefined,
-        body: opts.body ? JSON.stringify(opts.body) : undefined
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+        signal: controller ? controller.signal : undefined
       });
     } catch (e) {
+      if (e && e.name === "AbortError") {
+        throw new Error("Plumbline account services did not respond within " +
+          Math.round(timeoutMs / 1000) + " seconds. Guest mode remains available.");
+      }
       throw new Error("Plumbline database is unreachable" +
         (base ? " at " + base : "") +
         ". Start the Plumbline API (server/) or set window.PLUMBLINE_API to its URL.");
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
     var data = null;
     try { data = await res.json(); } catch (e) { /* empty body */ }
@@ -176,8 +187,16 @@ window.PlumblineData = (function () {
     aiEditWorkflow: function (workflow, instruction) {
       return api("/api/ai/workflow-edit", {
         method: "POST",
-        body: { workflow: workflow, instruction: instruction }
+        body: { workflow: workflow, instruction: instruction },
+        timeoutMs: 120000
       });
+    },
+    listAiWorkflowEdits: function (limit) {
+      var safeLimit = Math.max(1, Math.min(100, Number(limit) || 30));
+      return api("/api/ai/workflow-edits?limit=" + encodeURIComponent(safeLimit));
+    },
+    loadAiWorkflowEdit: function (editId) {
+      return api("/api/ai/workflow-edits/" + encodeURIComponent(editId));
     },
 
     /* ---- online history (activity_log) ------------------------------------------ */

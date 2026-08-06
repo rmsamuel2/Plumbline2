@@ -41,7 +41,9 @@ const { Pool } = require("pg");
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.PGSSL === "disable" ? false : { rejectUnauthorized: false }
+  ssl: process.env.PGSSL === "disable" ? false : { rejectUnauthorized: false },
+  connectionTimeoutMillis: Math.max(1000, Number(process.env.PG_CONNECTION_TIMEOUT_MS) || 8000),
+  query_timeout: Math.max(1000, Number(process.env.PG_QUERY_TIMEOUT_MS) || 15000)
 });
 
 async function query(text, params) {

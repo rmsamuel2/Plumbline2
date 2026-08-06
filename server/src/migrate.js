@@ -1,9 +1,10 @@
-// Applies every server/migrations/*.sql in filename order. All three files
-// are idempotent (IF NOT EXISTS / CREATE OR REPLACE / guarded DO blocks), so
+// Applies every server/migrations/*.sql in filename order. Migrations are
+// idempotent (IF NOT EXISTS / CREATE OR REPLACE / guarded DO blocks), so
 // re-running is always safe — on a brand-new Supabase project or a live 001 DB.
 //   001_init.sql               original base schema
 //   002_production_schema.sql  = plumbline_supabase_setup.sql (001 + migration 002)
 //   003_security_patch.sql     = plumbline_supabase_patch_003.sql
+//   004-006                    settings, workflow ordering, AI edit history
 const fs = require("fs");
 const path = require("path");
 const { pool } = require("./db.js");

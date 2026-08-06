@@ -94,6 +94,27 @@ const SYSTEM =
   "findings plainly for a non-technical operator. Respond ONLY as JSON matching " +
   "the requested schema.";
 
+// Fixed server-owned context for every AI workflow edit. This is deliberately
+// separate from the user's editable request so the model always receives the
+// Workflow Builder contract, even when the user supplies only a short change.
+const WORKFLOW_BUILDER_CONTEXT =
+  "Plumbline Workflow Builder represents a business process as one complete " +
+  "finite-state workflow document: process contains workflow metadata and a stable " +
+  "process_key; stages are ordered visual categories identified by stage_key; states " +
+  "are editable boxes identified by state_key and assigned to an existing stage_key; " +
+  "transitions are directed connections between existing states and carry an event_name; " +
+  "depends_on records prerequisite boxes; custom_state_types defines any box type beyond " +
+  "START, NORMAL, WARNING, ERROR, and FINAL; and costs may reference an existing stage, " +
+  "state, or transition. The editor renders this full document, so an edit must return " +
+  "a complete, internally consistent workflow, preserve unaffected data and stable keys, " +
+  "and update every reference when a key changes.";
+
+function workflowEditSystemPrompt() {
+  return SYSTEM + "\n\nWorkflow Builder context: " + WORKFLOW_BUILDER_CONTEXT +
+    "\n\nYou edit complete Plumbline Workflow Editor documents. Follow this contract " +
+    "and preserve all unaffected user data.";
+}
+
 // Build the user prompt for each intent from the payload the browser sent.
 function promptFor(intent, payload) {
   switch (intent) {
@@ -360,9 +381,7 @@ async function editWorkflow(workflow, instruction) {
       model: MODEL,
       max_tokens: 16384,
       thinking: { type: "adaptive" },
-      system:
-        SYSTEM + " You also edit complete Plumbline Workflow Editor documents. " +
-        "Follow the workflow specification and preserve all unaffected user data.",
+      system: workflowEditSystemPrompt(),
       output_config: {
         format: { type: "json_schema", schema: SCHEMAS.edit_workflow }
       },
@@ -440,6 +459,7 @@ module.exports = {
   editWorkflow,
   validateEditorWorkflow,
   workflowEditPrompt,
+  workflowEditSystemPrompt,
   mapAnthropicError,
   mapGeneratedTransitionKeys,
   countOptionalSchemaProperties,

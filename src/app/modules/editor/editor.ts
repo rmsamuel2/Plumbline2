@@ -399,7 +399,7 @@ exports.init = function (ctx) {
   setupEditorSync();
 
   /* The editor document is separate and cannot reach the module registry, so
-     its Save and Explore Saved buttons post messages. Flush first: the user's
+     its Save and Explorer buttons post messages. Flush first: the user's
      most recent edits live inside the iframe until either path is opened. */
   window.addEventListener("message", function (ev) {
     var d = ev && ev.data;

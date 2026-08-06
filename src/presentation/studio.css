@@ -234,6 +234,7 @@
   .libTitle{font-weight:600;flex:1}
   .libPanel>input{margin:10px 14px 4px;padding:7px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
   .libTree{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 8px 12px}
+  .libSelectionHint{padding:0 14px 7px;color:var(--muted);font-size:10px;line-height:1.35}
   .libSec{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#6f7886;
           padding:12px 8px 4px;font-weight:600}
   .libNote{font-size:12px;color:#6f7886;padding:2px 8px 6px;font-style:italic}
@@ -258,6 +259,15 @@
   .libRow:hover .libAct{border-color:var(--plumb)}
   .libFoot{border-top:1px solid var(--line);padding:10px 14px;display:flex;flex-direction:column;gap:8px}
   .libFoot>#libOpen{width:100%}
+  .libBatch{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-soft)}
+  .libBatch[hidden]{display:none}
+  .libBatchSummary,.libBatchMoveRow,.libBatchActions{display:flex;align-items:center;gap:7px}
+  .libBatchSummary{justify-content:space-between;font-size:12px}
+  .libBatchSummary .btn{padding:4px 7px;min-height:0;font-size:11px}
+  .libBatchMoveRow select{flex:1;min-width:0;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+  .libBatchMoveRow .btn{flex:0 0 auto}
+  .libBatchActions .btn{flex:1}
+  .libRow.sel{box-shadow:inset 3px 0 0 rgba(255,255,255,.7)}
   .libAll{display:flex;align-items:center;gap:6px;font-size:12px;color:#6f7886;margin-top:4px}
   .libLbl{font-size:11px;color:#6f7886;text-transform:uppercase;letter-spacing:.05em}
   .libFoot input,.libFoot select{padding:6px 9px;border:1px solid var(--line);border-radius:8px;font:inherit}

@@ -2,7 +2,8 @@
 
 The backend for two of Plumbline's five layers, over the **production
 database schema** (001 base + migration 002 + security patch 003 + account
-settings migration 004 + workflow ordering migration 005):
+settings migration 004 + workflow ordering migration 005 + AI edit history
+migration 006):
 
 - **Data interaction layer** — the `PlumblineData` gateway talks here: auth
   (bcrypt, signed httpOnly session cookie, hashed remember tokens), the atomic
@@ -33,7 +34,7 @@ cd server
 cp .env.example .env      # DATABASE_URL (Supabase URI), SESSION_SECRET, ANTHROPIC_API_KEY
 npm install
 npm run migrate           # applies migrations/*.sql in order — idempotent, safe to re-run
-npm run verify-db         # checks connectivity and migrations 004/005 without printing secrets
+npm run verify-db         # checks connectivity and migrations 004/005/006 without printing secrets
 npm start                 # Plumbline API on :8080
 ```
 
@@ -92,6 +93,8 @@ The front-end finds the API through `window.PLUMBLINE_API` (set in
 | GET  | `/api/admin/audit` | superuser: append-only audit log |
 | POST | `/api/admin/purge-expired-auth` | superuser: `purge_expired_auth()` (pg_cron also runs it nightly on Supabase) |
 | POST | `/api/llm` | LLM proxy — `{intent, payload}` |
+| POST | `/api/ai/workflow-edit` | authenticated Claude workflow edit; successful result is added to account history |
+| GET | `/api/ai/workflow-edits` · `/api/ai/workflow-edits/:id` | list or retrieve the signed-in user's prior AI edits |
 
 `/api/llm` intents: `suggest_stage_names`, `explain_finding`,
 `suggest_tile_name`, `summarize_workflow`, `health`.
@@ -104,6 +107,7 @@ migrations/002_production_schema.sql  = plumbline_supabase_setup.sql (001 + 002)
 migrations/003_security_patch.sql     = plumbline_supabase_patch_003.sql
 migrations/004_user_settings.sql      account-backed JSONB preferences
 migrations/005_workflow_sort_order.sql persistent library ordering
+migrations/006_ai_edit_history.sql    account-scoped AI request/result history
 src/db.js        Postgres pool + RLS-context transactions (SET LOCAL app.user_id)
 src/normalize.js snapshot → normalized FSM tables (both snapshot dialects)
 src/index.js     Express app: auth, folders, versioned workflows, analyses,

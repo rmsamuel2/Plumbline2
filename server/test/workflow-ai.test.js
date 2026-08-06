@@ -5,6 +5,7 @@ const assert = require("node:assert/strict");
 const {
   validateEditorWorkflow,
   workflowEditPrompt,
+  workflowEditSystemPrompt,
   mapAnthropicError,
   mapGeneratedTransitionKeys,
   countOptionalSchemaProperties,
@@ -111,6 +112,15 @@ test("prompt treats workflow and request as delimited data", function () {
   assert.match(prompt, /<user_change>\nAdd a review box\n<\/user_change>/);
   assert.match(prompt, /<current_workflow_json>/);
   assert.match(prompt, /complete updated document, not a patch/i);
+});
+
+test("AI edits always receive the server-owned Workflow Builder explanation", function () {
+  const system = workflowEditSystemPrompt();
+  assert.match(system, /Workflow Builder context:/);
+  assert.match(system, /stages are ordered visual categories/i);
+  assert.match(system, /states are editable boxes/i);
+  assert.match(system, /transitions are directed connections/i);
+  assert.match(system, /complete, internally consistent workflow/i);
 });
 
 test("maps provider details to safe public errors", function () {

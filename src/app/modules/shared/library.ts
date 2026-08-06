@@ -1,7 +1,7 @@
 /* ============================================================================
  * studio/shared/library.ts — the workflow navigation pane
  * ----------------------------------------------------------------------------
- * The organized Explore Saved sidebar plus the focused Save dialog. Both are
+ * The organized Explorer sidebar plus the focused Save dialog. Both are
  * shared by the Editor and Analysis Studio and overlay whichever screen is
  * showing.
  *
@@ -55,6 +55,9 @@ var editingCollectionId = null;
 var pendingConfirmation = null;
 var exampleCollections = [];
 var exampleStateScope = null;
+var selectedIds = new Set(); /* workflow/example ids selected in Explorer */
+var selectedKind = null;     /* keep a batch homogeneous so its actions are clear */
+var selectionAnchor = null;
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -296,6 +299,63 @@ function row(opts) {
   return el;
 }
 
+function clearSelection(shouldRender) {
+  selectedIds.clear();
+  selectedKind = null;
+  selectionAnchor = null;
+  pick = null;
+  if (shouldRender !== false) render();
+}
+
+function selectableKey(kind, id) { return kind + ":" + id; }
+
+function selectItem(kind, id, name, extra, event) {
+  var key = selectableKey(kind, id);
+  var additive = !!(event && (event.ctrlKey || event.metaKey));
+  var range = !!(event && event.shiftKey);
+  if (selectedKind !== kind) {
+    selectedIds.clear();
+    selectedKind = kind;
+    selectionAnchor = null;
+  }
+  if (range && selectionAnchor) {
+    var visible = Array.prototype.slice.call(document.querySelectorAll('.libRow[data-select-kind="' + kind + '"]'));
+    var from = visible.findIndex(function (node) { return node.dataset.selectKey === selectionAnchor; });
+    var to = visible.findIndex(function (node) { return node.dataset.selectKey === key; });
+    if (from >= 0 && to >= 0) {
+      if (!additive) selectedIds.clear();
+      visible.slice(Math.min(from, to), Math.max(from, to) + 1).forEach(function (node) {
+        selectedIds.add(node.dataset.selectId);
+      });
+    } else selectedIds.add(id);
+  } else if (additive) {
+    if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+    selectionAnchor = key;
+  } else {
+    selectedIds.clear();
+    selectedIds.add(id);
+    selectionAnchor = key;
+  }
+  if (!selectedIds.size) {
+    selectedKind = null;
+    selectionAnchor = null;
+    pick = null;
+  } else if (selectedIds.size === 1) {
+    var only = Array.from(selectedIds)[0];
+    pick = Object.assign({ kind: kind, id: only, name: only }, only === id ? (extra || { name: name }) : {});
+  } else {
+    pick = { kind: "multi", selectionKind: kind };
+  }
+  render();
+}
+
+function markSelectable(el, kind, id) {
+  el.dataset.selectKind = kind;
+  el.dataset.selectId = id;
+  el.dataset.selectKey = selectableKey(kind, id);
+  el.setAttribute("aria-selected", selectedKind === kind && selectedIds.has(id) ? "true" : "false");
+}
+
 function iconSvg(kind) {
   var paths = {
     edit: '<path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z"></path><path d="m13.5 6.5 4 4"></path>',
@@ -392,6 +452,7 @@ function renderFolder(g, host, depth) {
     note: kids.length ? String(kids.length) : "",
     sel: pick && pick.kind === "group" && pick.id === g.groupId,
     onClick: function () {
+      clearSelection(false);
       open[g.groupId] = !expanded;
       pick = { kind: "group", id: g.groupId, name: g.name };
       render();
@@ -416,17 +477,23 @@ function renderFolder(g, host, depth) {
 }
 
 function workflowRow(w) {
+  var selectable = w.isMine !== false && w.visibility !== "SAMPLE";
   var el = row({
     icon: "\u2261",
     label: w.name,
     note: w.versionNumber ? ("v" + w.versionNumber) : "",
-    sel: pick && pick.kind === "workflow" && pick.id === w.id,
-    onClick: function () {
-      pick = { kind: "workflow", id: w.id, name: w.name,
-               sample: w.visibility === "SAMPLE" };
+    sel: selectable ? (selectedKind === "workflow" && selectedIds.has(w.id))
+                    : (pick && pick.kind === "workflow" && pick.id === w.id),
+    onClick: function (event) {
+      if (selectable) return selectItem("workflow", w.id, w.name, {
+        kind: "workflow", id: w.id, name: w.name, sample: false
+      }, event);
+      clearSelection(false);
+      pick = { kind: "workflow", id: w.id, name: w.name, sample: true };
       render();
     }
   });
+  if (selectable) markSelectable(el, "workflow", w.id);
   makeWorkflowDraggable(el, w);
   if (w.isMine !== false && w.visibility !== "SAMPLE") {
     var actions = document.createElement("span");
@@ -521,12 +588,12 @@ function exampleRow(w, collectionId) {
     icon: "\u25c7",
     label: w.name,
     note: "example",
-    sel: pick && pick.kind === "example" && pick.id === w.id,
-    onClick: function () {
-      pick = { kind: "example", id: w.id, name: w.name };
-      render();
+    sel: selectedKind === "example" && selectedIds.has(w.id),
+    onClick: function (event) {
+      selectItem("example", w.id, w.name, { kind: "example", id: w.id, name: w.name }, event);
     }
   });
+  markSelectable(el, "example", w.id);
   makeExampleDraggable(el, w, collectionId);
   var actions = document.createElement("span");
   actions.className = "libRowActions";
@@ -549,6 +616,7 @@ function renderExampleCollection(collection, host) {
     label: collection.name,
     note: String(visible.length),
     onClick: function () {
+      clearSelection(false);
       exampleOpen[collection.id] = !expanded;
       render();
     }
@@ -597,7 +665,7 @@ function render() {
       var unfiled = row({
         twist: loose.length ? (unfiledExpanded ? "\u25be" : "\u25b8") : "",
         icon: "\u25a2", label: "Unfiled", note: loose.length ? String(loose.length) : "drop here",
-        onClick: function () { open.__unfiled = !unfiledExpanded; render(); }
+        onClick: function () { clearSelection(false); open.__unfiled = !unfiledExpanded; pick = null; render(); }
       });
       makeFolderDropTarget(unfiled, null);
       tree.appendChild(unfiled);
@@ -609,11 +677,8 @@ function render() {
       }
     }
   }
-  if (samp.length) {
-    section(tree, "Samples", "read-only");
-    samp.forEach(function (w) { tree.appendChild(workflowRow(w)); });
-  }
-  section(tree, "Example workflows", "editable");
+  section(tree, "Examples", samp.length ? "saved and built-in" : "editable");
+  samp.forEach(function (w) { tree.appendChild(workflowRow(w)); });
   exampleCollections.forEach(function (collection) {
     renderExampleCollection(collection, tree);
   });
@@ -633,7 +698,10 @@ function paintActions() {
   var openBtn = $("libOpen");
   var lbl = "Open";
   var can = !!pick;
-  if (pick && pick.kind === "group") {
+  if (pick && pick.kind === "multi") {
+    lbl = "Select one workflow to open";
+    can = false;
+  } else if (pick && pick.kind === "group") {
     var n = mine().filter(function (w) { return w.groupId === pick.id; }).length;
     lbl = n ? ("Open folder (" + n + ")") : "Folder is empty";
     can = n > 0;
@@ -646,7 +714,46 @@ function paintActions() {
     openBtn.textContent = lbl;
     openBtn.disabled = !can || busy;
   }
+  paintBatchActions();
+}
 
+function fillBatchTarget() {
+  var select = $("libBatchTarget");
+  if (!select) return;
+  var previous = select.value;
+  select.innerHTML = "";
+  if (selectedKind === "example") {
+    exampleCollections.forEach(function (collection) {
+      var option = document.createElement("option");
+      option.value = collection.id; option.textContent = collection.name;
+      select.appendChild(option);
+    });
+  } else {
+    var unfiled = document.createElement("option");
+    unfiled.value = ""; unfiled.textContent = "Unfiled";
+    select.appendChild(unfiled);
+    groups.forEach(function (group) {
+      var option = document.createElement("option");
+      option.value = group.groupId;
+      option.textContent = Array(Math.max(0, Number(group.depth) || 0) + 1).join("\u00a0\u00a0") + group.name;
+      select.appendChild(option);
+    });
+  }
+  if (Array.prototype.some.call(select.options, function (option) { return option.value === previous; })) select.value = previous;
+}
+
+function paintBatchActions() {
+  var batch = $("libBatch");
+  if (!batch) return;
+  var count = selectedIds.size;
+  var noun = selectedKind === "example" ? "example" : "workflow";
+  batch.hidden = count < 2;
+  if ($("libBatchCount")) $("libBatchCount").textContent = count + " " + noun + (count === 1 ? "" : "s") + " selected";
+  if ($("libBatchTarget")) $("libBatchTarget").setAttribute("aria-label", "Move selected " + noun + "s to folder");
+  if (count >= 2) fillBatchTarget();
+  ["libBatchMove", "libBatchDuplicate", "libBatchDelete"].forEach(function (id) {
+    if ($(id)) $(id).disabled = busy || count < 2;
+  });
 }
 
 /* ---------------------------------------------------------------------------
@@ -718,7 +825,7 @@ function openExample(id) {
       d.name = rec.name;
       /* The Editor bridge derives this exact id when it echoes the example
          back. Matching it prevents that harmless echo from becoming a second
-         tab when Explore Saved is opened again. */
+         tab when Explorer is opened again. */
       d.id = "editor_" + rec.document.workflow.id;
     }
     deliver();
@@ -1213,6 +1320,142 @@ function moveWorkflow(id, groupId, beforeId) {
   })["finally"](function () { busy = false; paintActions(); });
 }
 
+function selectedRecords() {
+  if (selectedKind === "example") {
+    var selectedExamples = [];
+    exampleCollections.forEach(function (collection) {
+      collection.examples.forEach(function (example) {
+        if (selectedIds.has(example.id)) selectedExamples.push(example);
+      });
+    });
+    return selectedExamples;
+  }
+  return ordered(mine().filter(function (workflow) { return selectedIds.has(workflow.id); }));
+}
+
+function batchMove() {
+  if (busy || selectedIds.size < 2) return;
+  var targetId = $("libBatchTarget") ? $("libBatchTarget").value : "";
+  var records = selectedRecords();
+  if (selectedKind === "example") {
+    var destination = exampleCollections.find(function (collection) { return collection.id === targetId; });
+    if (!destination) { status("Choose an Examples folder.", true); return; }
+    var movingIds = new Set(records.map(function (record) { return record.id; }));
+    exampleCollections.forEach(function (collection) {
+      collection.examples = collection.examples.filter(function (example) { return !movingIds.has(example.id); });
+    });
+    Array.prototype.push.apply(destination.examples, records);
+    persistExampleState();
+    status(records.length + " examples moved to " + destination.name + ".");
+    render();
+    return;
+  }
+  var targetGroupId = targetId || null;
+  var maxTargetOrder = mine().reduce(function (highest, workflow) {
+    var workflowGroupId = workflow.groupId || null;
+    if (workflowGroupId !== targetGroupId || selectedIds.has(workflow.id)) return highest;
+    return Math.max(highest, Number(workflow.sortOrder) || 0);
+  }, 0);
+  busy = true; paintActions();
+  status("Moving " + records.length + " workflows…");
+  Promise.all(records.map(function (workflow, index) {
+    workflow.groupId = targetGroupId;
+    return api().updateWorkflow(workflow.id, {
+      groupId: workflow.groupId,
+      sortOrder: maxTargetOrder + ((index + 1) * 100)
+    });
+  })).then(function () {
+    status(records.length + " workflows moved.");
+    clearSelection(false);
+    return refresh();
+  })["catch"](function (e) {
+    status("Could not move the selected workflows: " + (e && e.message || e), true);
+    return refresh();
+  })["finally"](function () { busy = false; paintActions(); });
+}
+
+function batchDuplicate() {
+  if (busy || selectedIds.size < 2) return;
+  var records = selectedRecords();
+  if (selectedKind === "example") {
+    records.forEach(function (example) {
+      var location = findExampleLocation(example.id);
+      if (!location) return;
+      var copy = cloneExamples(example);
+      copy.id = "example_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+      copy.name = duplicateExampleName(example.name);
+      copy.document.workflow.id = copy.id;
+      copy.document.workflow.name = copy.name;
+      location.collection.examples.splice(location.index + 1, 0, copy);
+    });
+    persistExampleState();
+    clearSelection(false);
+    status(records.length + " examples duplicated.");
+    render();
+    return;
+  }
+  var used = new Set(mine().map(function (workflow) { return String(workflow.name || "").toLowerCase(); }));
+  function nextName(name) {
+    var base = (name || "Workflow") + " copy";
+    var candidate = base, n = 2;
+    while (used.has(candidate.toLowerCase())) candidate = base + " " + n++;
+    used.add(candidate.toLowerCase());
+    return candidate;
+  }
+  busy = true; paintActions();
+  status("Duplicating " + records.length + " workflows…");
+  Promise.all(records.map(function (workflow) {
+    return api().loadWorkflow(workflow.id).then(function (record) {
+      if (!record) throw new Error("Could not load " + workflow.name);
+      return api().saveWorkflow({
+        name: nextName(workflow.name),
+        description: workflow.description || "",
+        workflow: record.workflow,
+        config: record.config || {},
+        toolsExecuted: record.toolsExecuted || [],
+        layout: record.layout || {},
+        groupId: workflow.groupId || null
+      });
+    });
+  })).then(function () {
+    clearSelection(false);
+    status(records.length + " workflows duplicated.");
+    return refresh();
+  })["catch"](function (e) {
+    status("Could not duplicate the selected workflows: " + (e && e.message || e), true);
+  })["finally"](function () { busy = false; paintActions(); });
+}
+
+function batchDelete() {
+  if (busy || selectedIds.size < 2) return;
+  var records = selectedRecords();
+  var noun = selectedKind === "example" ? "examples" : "workflows";
+  askConfirmation("Delete selected " + noun + "?", "Delete " + records.length + " selected " + noun + "? This cannot be undone.", function () {
+    if (selectedKind === "example") {
+      var deleting = new Set(records.map(function (record) { return record.id; }));
+      exampleCollections.forEach(function (collection) {
+        collection.examples = collection.examples.filter(function (example) { return !deleting.has(example.id); });
+      });
+      persistExampleState();
+      clearSelection(false);
+      status(records.length + " examples deleted.");
+      render();
+      return;
+    }
+    busy = true; paintActions();
+    status("Deleting " + records.length + " workflows…");
+    Promise.all(records.map(function (workflow) { return api().deleteWorkflow(workflow.id); }))
+      .then(function () {
+        clearSelection(false);
+        status(records.length + " workflows deleted.");
+        return refresh();
+      })["catch"](function (e) {
+        status("Could not delete the selected workflows: " + (e && e.message || e), true);
+        return refresh();
+      })["finally"](function () { busy = false; paintActions(); });
+  });
+}
+
 /* ---------------------------------------------------------------------------
  * saving
  * -------------------------------------------------------------------------*/
@@ -1386,6 +1629,7 @@ exports.open = function (opts) {
   MODE = (opts && opts.mode) || "editor";
   loadExampleState(false);
   pick = null;
+  clearSelection(false);
   hideEditWorkflow();
   var o = $("libraryOverlay");
   if (!o) return Promise.resolve();
@@ -1396,7 +1640,7 @@ exports.open = function (opts) {
   var createFolder = $("libNewFolder");
   if (createFolder) createFolder.hidden = guest;
   var title = document.querySelector(".libTitle");
-  if (title) title.textContent = guest ? "Explore examples" : "Explore saved";
+  if (title) title.textContent = "Explorer";
   return refresh()["catch"](function (e) {
     status("Could not load the library: " + (e && e.message || e), true);
   });
@@ -1418,6 +1662,7 @@ exports.init = function (ctx) {
     if (e.target && e.target.id === "libraryOverlay") close();
   });
   bind("libSearch", "input", function (e) {
+    clearSelection(false);
     filter = String(e.target.value || "").trim().toLowerCase();
     render();
   });
@@ -1439,6 +1684,10 @@ exports.init = function (ctx) {
   bind("libraryConfirmModal", "click", function (e) {
     if (e.target && e.target.id === "libraryConfirmModal") closeConfirmation();
   });
+  bind("libBatchClear", "click", function () { clearSelection(true); });
+  bind("libBatchMove", "click", batchMove);
+  bind("libBatchDuplicate", "click", batchDuplicate);
+  bind("libBatchDelete", "click", batchDelete);
   bind("workflowSaveClose", "click", closeSave);
   bind("workflowSaveCancel", "click", closeSave);
   bind("workflowSaveConfirm", "click", submitSave);

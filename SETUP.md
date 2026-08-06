@@ -47,9 +47,10 @@ into PowerShell — double quotes silently expand `$word`.
 powershell -ExecutionPolicy Bypass -File .\setup-plumbline.ps1
 ```
 
-It checks prerequisites and the filesystem, runs `npm install`, applies
-migrations 001–003 (idempotent), builds `dist\Plumbline_Studio_V2.html`, starts
-the API on port 8080 in its own window, and opens the app.
+It checks prerequisites and the filesystem, runs `npm install`, applies every
+database migration through 006 (idempotent), builds
+`dist\Plumbline_Studio_V2.html`, starts the API on port 8080 in its own window,
+and opens `http://localhost:8080/#/home`.
 
 Seeded logins are `rob / password` and `max / password`. **Change both
 immediately** — Account → Change password, which revokes old sessions and
