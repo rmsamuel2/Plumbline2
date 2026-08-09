@@ -18,7 +18,7 @@
     <span class="userbadge navUserBadge" data-session-badge hidden>not signed in</span>
   </nav>
   <main id="outlet">
-  <section id="homePage" class="plPage active" aria-label="Plumbline home">
+  <section id="homePage" class="plPage" aria-label="Plumbline home">
     <div class="homeShell">
       <section class="homeHero">
         <div class="homeCard homeHeroContent">
@@ -180,13 +180,55 @@
   <div id="libraryOverlay" class="libOverlay" style="display:none">
     <aside id="librarySidebar" class="libPanel" role="dialog" aria-label="Workflow library">
       <div class="libHead">
-        <span class="libTitle">Workflows</span>
-        <button class="btn ghost" id="libNewFolder" title="Create a folder">New folder</button>
-        <button class="btn ghost" id="libClose" aria-label="Close">&times;</button>
+        <div class="libTitleBlock">
+          <span class="libEyebrow">Plumbline workspace</span>
+          <span class="libTitle">Explorer</span>
+        </div>
+        <div class="libHeadActions">
+          <button class="btn ghost libExampleAction" id="libRemoveExamples" title="Remove every editable example" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7"></path></svg>
+            <span>Remove examples</span>
+          </button>
+          <button class="btn ghost libExampleAction" id="libUndoExamples" title="Restore the last set of removed examples" type="button" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 8 4 12l5 4"></path><path d="M5 12h8a6 6 0 0 1 6 6"></path></svg>
+            <span>Undo remove</span>
+          </button>
+          <button class="btn ghost libNewFolder" id="libNewFolder" title="Create a folder (Ctrl+Shift+N)" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10h-17z"></path><path d="M12 11v5m-2.5-2.5h5"></path></svg>
+            <span>New folder</span>
+          </button>
+          <button class="libWindowClose" id="libClose" type="button" aria-label="Close Explorer" title="Close Explorer">&times;</button>
+        </div>
       </div>
-      <input id="libSearch" type="text" placeholder="Find a workflow or folder" autocomplete="off">
-      <div class="libSelectionHint">Shift-click selects a range. Ctrl/Cmd-click selects individual workflows.</div>
-      <div id="libTree" class="libTree"></div>
+      <div class="libCommandBar">
+        <div class="libAddress" aria-label="Current Explorer location">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10h-17z"></path></svg>
+          <span>Plumbline</span><b aria-hidden="true">›</b><strong>Workflows</strong>
+        </div>
+        <label class="libSearchBox" for="libSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>
+          <input id="libSearch" type="search" placeholder="Search workflows and folders" autocomplete="off">
+        </label>
+      </div>
+
+      <div class="libBrowser">
+        <nav class="libPlaces" aria-label="Explorer locations">
+          <div class="libPlacesTitle">Locations</div>
+          <button id="libPlaceWorkflows" class="libPlace on" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10h-17z"></path></svg>
+            <span>My workflows</span><small id="libMineCount">0</small>
+          </button>
+          <button id="libPlaceExamples" class="libPlace" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h8l4 4v13H7z"></path><path d="M15 3.5v4h4M10 12h6m-6 4h6"></path></svg>
+            <span>Examples</span><small id="libExampleCount">0</small>
+          </button>
+          <div class="libSelectionHint"><kbd>Shift</kbd>-click selects a range.</div>
+        </nav>
+        <section class="libContents" aria-label="Workflow files">
+          <div class="libColumns" aria-hidden="true"><span>Name</span><span>Version</span><span>Actions</span></div>
+          <div id="libTree" class="libTree" role="tree" aria-label="Workflow and folder list"></div>
+        </section>
+      </div>
 
       <div class="libFoot">
         <div id="libBatch" class="libBatch" hidden>
@@ -231,6 +273,7 @@
           </div>
         </div>
       </div>
+      <div id="libContextMenu" class="libContextMenu" role="menu" aria-label="Explorer actions" hidden></div>
     </aside>
   </div>
   <div id="libraryConfirmModal" class="modal" style="display:none">
@@ -289,7 +332,6 @@
           </div>
           <div class="authactions">
             <button class="btn" id="btnSignIn">Sign in</button>
-            <label class="authremember"><input type="checkbox" id="authRemember"> Keep me signed in</label>
           </div>
           <p class="authSwitch">New to Plumbline? <button type="button" data-auth-mode="signup">Create an account</button></p>
         </section>

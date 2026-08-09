@@ -275,6 +275,12 @@ app.patch("/api/settings", requireSession, async (req, res, next) => {
     const b = req.body || {};
     const patch = {};
     if (Object.prototype.hasOwnProperty.call(b, "darkMode")) patch.darkMode = !!b.darkMode;
+    if (Object.prototype.hasOwnProperty.call(b, "explorerFolderOrder")) {
+      const rawOrder = Array.isArray(b.explorerFolderOrder) ? b.explorerFolderOrder : [];
+      patch.explorerFolderOrder = Array.from(new Set(rawOrder
+        .map((value) => String(value || "").trim())
+        .filter((value) => value && value.length <= 128))).slice(0, 2000);
+    }
     const u = await one(
       "update users set settings=coalesce(settings, '{}'::jsonb) || $2::jsonb, updated_at=now() " +
       "where id=$1 returning settings",

@@ -28,7 +28,6 @@ function saveGuestSettings(settings) {
 }
 function byId(id) { return document.getElementById(id); }
 function authVal(id) { var n = byId(id); return n ? (n.value || "").trim() : ""; }
-function authChecked(id) { var n = byId(id); return !!(n && n.checked); }
 function blankProfile() { return { displayName: "", email: "", team: "", role: "", region: "" }; }
 function profileFromInputs() {
   return {
@@ -207,7 +206,7 @@ async function createUser() {
   }
   try {
     await PData().signup({ email: email, username: username || null, password: password });
-    await PData().login(email, password, true);
+    await PData().login(email, password, false);
     await loadSignedInAccount();
     logHistory("login", "Created account");
     showAuth(false);
@@ -223,7 +222,9 @@ async function signIn() {
     return;
   }
   try {
-    await PData().login(username, password, authChecked("authRemember"));
+    /* Sign-in persistence is intentionally disabled. A normal session cookie
+       lasts only for the current browser session. */
+    await PData().login(username, password, false);
     await loadSignedInAccount();
     logHistory("login", "Signed in");
     showAuth(false);
@@ -456,7 +457,6 @@ exports.enterGuest = enterGuest;
 exports.PData = PData;
 exports.dataProblem = dataProblem;
 exports.authVal = authVal;
-exports.authChecked = authChecked;
 exports.blankProfile = blankProfile;
 exports.profileFromInputs = profileFromInputs;
 exports.broadcastAuthToEditor = broadcastAuthToEditor;
