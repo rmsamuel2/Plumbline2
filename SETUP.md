@@ -68,14 +68,10 @@ writes an audit row.
 
 ## Adding a user
 
-Use the signup endpoint. It goes through the same `bcrypt.hash(pw, 10)` path
-the login handler verifies against:
-
-```powershell
-Invoke-RestMethod -Uri http://localhost:8080/api/signup -Method Post `
-  -ContentType application/json `
-  -Body '{"username":"someone","password":"...","displayName":"Someone"}'
-```
+Sign in with a superuser account, then choose **Create account** in the top
+navigation. Anonymous signup is disabled; the API enforces the same
+superuser-only rule even if a client attempts to call it directly. Passwords
+are hashed through the same `bcrypt.hash(pw, 10)` path used by authentication.
 
 Then promote if needed:
 

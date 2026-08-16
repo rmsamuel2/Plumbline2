@@ -67,7 +67,7 @@ The front-end finds the API through `window.PLUMBLINE_API` (set in
 | Method | Path | Purpose |
 |---|---|---|
 | GET  | `/api/health` | DB reachability + schema tag |
-| POST | `/api/signup` | create user from email, optional username, and min 8-char password |
+| POST | `/api/signup` | superuser-only account creation from email, optional username, and min 8-char password |
 | POST | `/api/login` · `/api/logout` | session cookie; `remember:true` adds a hashed remember token |
 | GET  | `/api/session` | signed-in state + capabilities (honours `revoked_at`, remember fallback) |
 | POST | `/api/password` | self-service password change → `admin_reset_password()` (atomic, audited) |

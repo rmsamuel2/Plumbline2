@@ -11,9 +11,9 @@
     <a href="#/editor" data-route data-protected-nav hidden>Editor</a>
     <a href="#/analysis" data-route data-protected-nav hidden>Analysis</a>
     <a href="#/maintenance" data-route data-superuser-only hidden>Maintenance</a>
+    <button class="btn navAuth navCreate" type="button" data-auth-mode="signup" data-superuser-only hidden>Create account</button>
     <button class="btn ghost navSettings" type="button" data-settings>Settings</button>
     <button class="btn ghost navAuth" type="button" data-auth-mode="login" data-anonymous-only>Sign in</button>
-    <button class="btn navAuth navCreate" type="button" data-auth-mode="signup" data-anonymous-only>Create account</button>
     <button class="btn ghost navSignOut" type="button" data-signout data-signed-in-only hidden>Sign out</button>
     <span class="userbadge navUserBadge" data-session-badge hidden>not signed in</span>
   </nav>
@@ -25,10 +25,9 @@
           <div id="homeGate">
             <div class="homeEyebrow">Workflow intelligence, grounded in proof</div>
             <h1>See the work clearly.<br><span>Improve it confidently.</span></h1>
-            <p class="homeLead">Plumbline turns complex processes into workflows you can map, measure, and strengthen. Start with an account to keep your work, or explore immediately as a guest.</p>
+            <p class="homeLead">Plumbline turns complex processes into workflows you can map, measure, and strengthen. Sign in to continue your work, or explore immediately as a guest.</p>
             <div class="homeActions">
               <button class="btn big" id="homeLogin">Sign in</button>
-              <button class="btn dark" id="homeSignup">Create account</button>
               <button class="btn ghost homeGuestBtn" id="homeGuest">Continue as guest</button>
             </div>
             <div class="homePromise"><span>Map</span><i></i><span>Measure</span><i></i><span>Improve</span></div>
@@ -241,6 +240,7 @@
             <button class="btn ghost" id="libBatchMove" type="button">Move</button>
           </div>
           <div class="libBatchActions">
+            <button class="btn primary" id="libBatchOpen" type="button">Open selected</button>
             <button class="btn ghost" id="libBatchDuplicate" type="button">Duplicate</button>
             <button class="btn danger" id="libBatchDelete" type="button">Delete</button>
           </div>
@@ -333,7 +333,6 @@
           <div class="authactions">
             <button class="btn" id="btnSignIn">Sign in</button>
           </div>
-          <p class="authSwitch">New to Plumbline? <button type="button" data-auth-mode="signup">Create an account</button></p>
         </section>
         <section class="authPanel" data-auth-panel="signup">
           <h3>Create an account</h3>

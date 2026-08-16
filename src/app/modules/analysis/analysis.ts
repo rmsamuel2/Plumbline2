@@ -1794,8 +1794,11 @@ function full() { renderWfBar(); if (ws_1.getActive() === -1) {
 
 /* main.ts:2466-2556 */  /* HOOK: see PHASE1_ASSIGNMENT.md */
 function init() {
-    ws_1.setDocs([]);
-    ws_1.setActive(-2);
+    /* Editor and Analysis share workspace.docs[]. Do not erase workflows that
+       were opened in the Editor before Analysis is mounted for the first time.
+       Only put a genuinely empty workspace into its blank sentinel state. */
+    if (!ws_1.getDocs().length)
+        ws_1.setActive(-2);
     /* setupEditorSync() moved to editor.ts init(), called from ui-boot:
        the listener must exist from boot, not from a screen mount. */
     setupAnalysisPanZoom();

@@ -116,12 +116,15 @@ function showAuth(open, mode) {
   if (!m) return;
   m.style.display = open ? "flex" : "none";
   if (!open) return;
-  var authMode = currentUser ? "account" : (mode === "signup" ? "signup" : "login");
+  /* Account creation is an administrative action. Anonymous users always land
+     on sign-in; only a signed-in superuser may reveal the signup panel. */
+  var wantsSignup = mode === "signup" && isSuperuser();
+  var authMode = wantsSignup ? "signup" : (currentUser ? "account" : "login");
   m.setAttribute("data-auth-mode", authMode);
   renderAuth(authMode);
-  var focusId = mode === "signup" ? "signupEmail" : "authUser";
+  var focusId = wantsSignup ? "signupEmail" : "authUser";
   var focusNode = byId(focusId);
-  if (focusNode && !currentUser) setTimeout(function () { focusNode.focus(); }, 0);
+  if (focusNode && (!currentUser || wantsSignup)) setTimeout(function () { focusNode.focus(); }, 0);
 }
 
 async function refreshAccountData() {
@@ -170,17 +173,22 @@ function paintAccountLists() {
 
 function renderAuth(mode) {
   var title = byId("authTitle"), entry = byId("authEntryPanels"), account = byId("authAccountPanel");
-  if (title) title.textContent = currentUser
-    ? "Account — " + (currentUser.displayName || currentUser.username || currentUser.email)
-    : (mode === "signup" ? "Welcome to Plumbline" : "Welcome back");
-  if (entry) entry.hidden = !!currentUser;
-  if (account) account.hidden = !currentUser;
-  if (currentUser) {
+  var creating = mode === "signup" && isSuperuser();
+  if (title) title.textContent = creating
+    ? "Create an account"
+    : (currentUser
+      ? "Account — " + (currentUser.displayName || currentUser.username || currentUser.email)
+      : "Welcome back");
+  if (entry) entry.hidden = !!currentUser && !creating;
+  if (account) account.hidden = !currentUser || creating;
+  if (currentUser && !creating) {
     setMessage("authStatus", "Signed in. Workflows, history, and preferences are stored with your account.", false);
     refreshAccountData();
-  } else {
+  } else if (!creating) {
     setMessage("authStatus", "", false);
     paintAccountLists();
+  } else {
+    setMessage("authStatus", "", false);
   }
 }
 
@@ -197,6 +205,10 @@ async function loadSignedInAccount() {
 }
 
 async function createUser() {
+  if (!isSuperuser()) {
+    setMessage("authStatus", "Only a superuser can create an account.", true);
+    return;
+  }
   var email = authVal("signupEmail").toLowerCase();
   var username = authVal("signupUsername").toLowerCase();
   var pwNode = byId("signupPassword"), password = pwNode ? pwNode.value : "";
@@ -206,11 +218,11 @@ async function createUser() {
   }
   try {
     await PData().signup({ email: email, username: username || null, password: password });
-    await PData().login(email, password, false);
-    await loadSignedInAccount();
-    logHistory("login", "Created account");
-    showAuth(false);
-    if (CTX) CTX.navigate("/home");
+    if (byId("signupEmail")) byId("signupEmail").value = "";
+    if (byId("signupUsername")) byId("signupUsername").value = "";
+    if (pwNode) pwNode.value = "";
+    logHistory("admin-create-user", "Created account for " + (username || email));
+    setMessage("authStatus", "Account created for " + (username || email) + ".", false);
   } catch (e) { dataProblem(e); }
 }
 

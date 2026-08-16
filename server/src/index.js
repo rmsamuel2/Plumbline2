@@ -154,7 +154,7 @@ app.get("/api/health", async (_req, res, next) => {
 /* =============================================================================
  * AUTH
  * ===========================================================================*/
-app.post("/api/signup", async (req, res, next) => {
+app.post("/api/signup", requireSuperuser, async (req, res, next) => {
   try {
     const b = req.body || {};
     const email = String(b.email || "").trim().toLowerCase();
@@ -172,7 +172,7 @@ app.post("/api/signup", async (req, res, next) => {
       "values ($1,$2,$3,$1) returning id",
       [username, email, hash]);
     await query("insert into audit_log(actor_user_id, action, entity_type, entity_id) " +
-                "values ($1,'USER_CREATED','users',$1)", [row.id]);
+                "values ($1,'USER_CREATED','users',$2)", [req.session.userid, row.id]);
     res.status(201).json({ userId: row.id });
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Username or email already exists" });

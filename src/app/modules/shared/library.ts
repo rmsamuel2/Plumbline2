@@ -984,8 +984,8 @@ function paintActions() {
   var lbl = "Open";
   var can = !!pick;
   if (pick && pick.kind === "multi") {
-    lbl = "Select one workflow to open";
-    can = false;
+    lbl = "Open selected (" + selectedIds.size + ")";
+    can = selectedIds.size > 1;
   } else if (pick && pick.kind === "group") {
     var n = mine().filter(function (w) { return w.groupId === pick.id; }).length;
     lbl = n ? ("Open folder (" + n + ")") : "Folder is empty";
@@ -1036,7 +1036,7 @@ function paintBatchActions() {
   if ($("libBatchCount")) $("libBatchCount").textContent = count + " " + noun + (count === 1 ? "" : "s") + " selected";
   if ($("libBatchTarget")) $("libBatchTarget").setAttribute("aria-label", "Move selected " + noun + "s to folder");
   if (count >= 2) fillBatchTarget();
-  ["libBatchMove", "libBatchDuplicate", "libBatchDelete"].forEach(function (id) {
+  ["libBatchOpen", "libBatchMove", "libBatchDuplicate", "libBatchDelete"].forEach(function (id) {
     if ($(id)) $(id).disabled = busy || count < 2;
   });
 }
@@ -1121,6 +1121,55 @@ function openExample(id) {
   } finally {
     busy = false; paintActions();
   }
+}
+
+/* Open every selected record into the shared workspace. The Editor and
+ * Analysis tab strips both render workspace.docs[], so the same complete set
+ * stays available when the user changes screens. */
+function openSelected() {
+  if (busy || selectedIds.size < 2) return;
+  var records = selectedRecords();
+  if (!records.length) return;
+  busy = true; paintActions();
+  status("Opening " + records.length + " selected workflows\u2026");
+
+  if (selectedKind === "example") {
+    try {
+      records.forEach(function (rec) {
+        appendDoc(rec.document, rec.name);
+        var d = ws_1.D();
+        if (d) {
+          d.name = rec.name;
+          d.id = "editor_" + rec.document.workflow.id;
+        }
+      });
+      deliver();
+      clearSelection(false);
+      status("");
+      close();
+    } catch (e) {
+      status("Could not open the selected examples: " + (e && e.message || e), true);
+    } finally {
+      busy = false; paintActions();
+    }
+    return;
+  }
+
+  Promise.all(records.map(function (record) { return api().loadWorkflow(record.id); }))
+    .then(function (loaded) {
+      loaded.forEach(function (rec, index) {
+        if (!rec) throw new Error("workflow " + (index + 1) + " was not found");
+        appendDoc(rec.workflow, rec.name || records[index].name || "Library");
+        var d = ws_1.D();
+        if (d) d.name = rec.name || records[index].name || d.name;
+      });
+      deliver();
+      clearSelection(false);
+      status("");
+      close();
+    })["catch"](function (e) {
+      status("Could not open the selected workflows: " + (e && e.message || e), true);
+    })["finally"](function () { busy = false; paintActions(); });
 }
 
 /* ---------------------------------------------------------------------------
@@ -2060,6 +2109,7 @@ exports.init = function (ctx) {
   });
   bind("libOpen", "click", function () {
     if (!pick || busy) return;
+    if (pick.kind === "multi") return openSelected();
     if (pick.kind === "group") return openFolder(pick.id);
     if (pick.kind === "example") return openExample(pick.id);
     return openWorkflow(pick.id, !!pick.sample);
@@ -2077,6 +2127,7 @@ exports.init = function (ctx) {
     if (e.target && e.target.id === "libraryConfirmModal") closeConfirmation();
   });
   bind("libBatchClear", "click", function () { clearSelection(true); });
+  bind("libBatchOpen", "click", openSelected);
   bind("libBatchMove", "click", batchMove);
   bind("libBatchDuplicate", "click", batchDuplicate);
   bind("libBatchDelete", "click", batchDelete);
