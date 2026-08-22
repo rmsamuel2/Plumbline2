@@ -59,6 +59,51 @@ const SCHEMAS = {
     properties: { text: { type: "string" } },
     required: ["text"]
   },
+  strategic_analysis: {
+    type: "object", additionalProperties: false,
+    properties: {
+      executive_summary: { type: "string" },
+      priorities: {
+        type: "array",
+        items: {
+          type: "object", additionalProperties: false,
+          properties: {
+            title: { type: "string" },
+            workflow: { type: "string" },
+            rationale: { type: "string" }
+          },
+          required: ["title", "workflow", "rationale"]
+        }
+      },
+      patterns: { type: "array", items: { type: "string" } },
+      risks: { type: "array", items: { type: "string" } },
+      portfolio_optimization: {
+        type: "object", additionalProperties: false,
+        properties: {
+          objective: { type: "string" },
+          actions: {
+            type: "array",
+            items: {
+              type: "object", additionalProperties: false,
+              properties: {
+                sequence: { type: "integer" },
+                workflows: { type: "array", items: { type: "string" } },
+                change: { type: "string" },
+                leverage: { type: "string" },
+                how: { type: "string" },
+                reason: { type: "string" },
+                success_measure: { type: "string" }
+              },
+              required: ["sequence", "workflows", "change", "leverage", "how", "reason", "success_measure"]
+            }
+          }
+        },
+        required: ["objective", "actions"]
+      }
+    },
+    required: ["executive_summary", "priorities", "patterns", "risks",
+      "portfolio_optimization"]
+  },
   edit_workflow: {
     type: "object", additionalProperties: false,
     properties: {
@@ -87,7 +132,7 @@ function countOptionalSchemaProperties(schema) {
 }
 
 const SYSTEM =
-  "You are Plumbline's naming and explanation assistant. Plumbline models a " +
+  "You are Plumbline's advisory analysis, naming, and explanation assistant. Plumbline models a " +
   "business process as a finite-state machine and CERTIFIES its findings with a " +
   "formal kernel. You are advisory only: you never certify a finding and never " +
   "invent numbers. Name stages and steps in crisp business language; explain " +
@@ -133,6 +178,29 @@ function promptFor(intent, payload) {
       return "Give a one-paragraph executive read of this workflow (states, " +
         "shape, what to look at first).\n\nWorkflow:\n" +
         JSON.stringify(payload.workflow, null, 2).slice(0, 12000);
+    case "strategic_analysis":
+      return [
+        "Interpret the supplied deterministic portfolio analysis for a business decision-maker.",
+        "Use only the exact facts and numbers supplied. Do not recompute, invent, extrapolate, or certify anything.",
+        "The cost and time fields are illustrative assumptions, not guaranteed savings.",
+        "analysis_coverage_percent is the share of Plumbline's six checks marked applied; zero coverage does not invalidate findings already reported.",
+        "applied_finding_count means suggested improvements applied to the graph, not findings validated.",
+        "Do not describe a finding as unvalidated merely because coverage or applied counts are zero.",
+        "Do not claim low coverage means checks have not run or that the findings are incomplete; the deterministic engine produced the supplied findings already.",
+        "Do not recommend running checks solely because coverage is low. Recommend reviewing the reported findings and deliberately applying appropriate improvements instead.",
+        "Focus exclusively on optimizing the workflows together as one operating portfolio; do not create isolated optimization plans for individual workflows.",
+        "Synthesize cross-workflow patterns, dependencies, shared bottlenecks, reusable capabilities, common stages, handoffs, and sequencing opportunities.",
+        "Propose 3-5 investigation priorities that each involve at least two supplied workflows or use 'Portfolio-wide'; do not recommend an improvement that benefits only one workflow in isolation.",
+        "Create one portfolio_optimization plan explaining how the workflows can leverage each other through shared inputs, outputs, data, controls, people, automation, standards, reusable stages, and coordinated timing where supported.",
+        "Every portfolio action must name at least two supplied workflows, or use 'All workflows'.",
+        "For every portfolio action, explain WHAT to coordinate, which capability or output from one workflow is LEVERAGED by another, HOW to implement it across the named workflows, WHY the coordinated change helps, and an observable portfolio-level success measure.",
+        "Reference supplied workflow names, state labels, and transitions when the data supports it. If evidence is insufficient, prescribe the cross-workflow measurement or dependency check needed instead of inventing a relationship.",
+        "Keep the executive summary concise and clearly advisory.",
+        "",
+        "<deterministic_analysis_json>",
+        JSON.stringify(payload.analysis || {}, null, 2).slice(0, 30000),
+        "</deterministic_analysis_json>"
+      ].join("\n");
     case "edit_workflow":
       return workflowEditPrompt(payload.workflow, payload.instruction);
     default:
@@ -436,14 +504,17 @@ async function editWorkflow(workflow, instruction) {
 
 // Called by the /api/llm route. Returns the normalised object for the intent.
 async function handle(intent, payload, modelOverride) {
-  if (intent === "health") return { ok: true, model: MODEL };
+  if (intent === "health") {
+    getClient();
+    return { ok: true, model: MODEL };
+  }
   const schema = SCHEMAS[intent];
   const prompt = promptFor(intent, payload || {});
-  if (!schema || !prompt) { const e = new Error("Unknown LLM intent: " + intent); e.status = 400; throw e; }
+  if (!schema || !prompt) throw publicError("Unknown LLM intent: " + intent, 400);
 
   const res = await getClient().messages.create({
     model: modelOverride || MODEL,
-    max_tokens: 2048,
+    max_tokens: intent === "strategic_analysis" ? 8192 : 2048,
     thinking: { type: "adaptive" },
     system: SYSTEM,
     output_config: { format: { type: "json_schema", schema: schema } },
@@ -463,5 +534,7 @@ module.exports = {
   mapAnthropicError,
   mapGeneratedTransitionKeys,
   countOptionalSchemaProperties,
-  editWorkflowSchema: SCHEMAS.edit_workflow
+  editWorkflowSchema: SCHEMAS.edit_workflow,
+  strategicAnalysisSchema: SCHEMAS.strategic_analysis,
+  promptFor
 };

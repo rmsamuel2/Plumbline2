@@ -123,6 +123,10 @@ function importEditorData(data, opts = {}) {
     ws_1.rebuild(d);
     const idx = ws_1.getDocs().findIndex(x => x.id === d.id);
     if (idx >= 0) {
+        const prior = ws_1.getDocs()[idx];
+        d.sourceWorkflowId = prior.sourceWorkflowId || null;
+        d.sourceWorkflowCreatedAt = prior.sourceWorkflowCreatedAt || null;
+        d.sourceWorkflowVersionId = prior.sourceWorkflowVersionId || null;
         ws_1.getDocs()[idx] = d;
         ws_1.setActive(idx);
     }

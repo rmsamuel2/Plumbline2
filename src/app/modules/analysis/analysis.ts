@@ -32,6 +32,13 @@ var ed_1   = require("studio/modules/editor.ts");
 var initialised = false;
 var CTX = null;   /* set by mount; retained so one-time bindings reach services */
 var strategicSort = "opportunity";
+var strategicView = "math";
+var strategicAiState = { status: "idle", result: null, signature: "", error: "",
+    source: "live", reportId: null, createdAt: null, aiGeneratedAt: null,
+    mathematicalSnapshot: null, workflowSnapshots: [] };
+var strategicAiSaving = false;
+var strategicAiSaveMessage = "";
+var aiReportExplorerState = { reports: [], selectedId: null, workflowKey: "all", filter: "", busy: false };
 
 
 /* main.ts:4-4 */
@@ -980,6 +987,439 @@ function openStrategicWorkflow(index) {
     showTab("analysis");
 }
 
+function strategicModeTabs() {
+    const tabs = dom_1.el("div", { class: "strategicModeTabs", role: "tablist", "aria-label": "Strategic analysis type" });
+    [["math", "Mathematical analysis"], ["ai", "AI analysis"]].forEach(pair => {
+        const button = dom_1.el("button", { class: "strategicModeTab" + (strategicView === pair[0] ? " on" : ""),
+            role: "tab", "aria-selected": String(strategicView === pair[0]), type: "button" }, pair[1]);
+        button.addEventListener("click", () => {
+            if (strategicView === pair[0])
+                return;
+            strategicView = pair[0];
+            renderSigma();
+            syncStudioControls();
+        });
+        tabs.append(button);
+    });
+    return tabs;
+}
+
+function strategicAiPayload(rows) {
+    const workflows = rows.slice(0, 25).map(r => ({
+        name: r.name,
+        state_count: r.stateCount,
+        transition_count: r.transitionCount,
+        cost_opportunity_illustrative: r.opportunityCost,
+        time_opportunity_minutes_illustrative: r.opportunityTime,
+        applied_cost_illustrative: r.appliedCost,
+        applied_time_minutes_illustrative: r.appliedTime,
+        finding_count: r.findings,
+        applied_finding_count: r.appliedFindings,
+        analysis_coverage_percent: r.coverage,
+        states: (r.d.wf.states || []).slice(0, 120).map(s => ({
+            id: s.id, label: s.label || s.name || s.id, role: s.role || "normal",
+            initial: !!s.initial, accept: !!s.accept, reject: !!s.reject
+        })),
+        transitions: (r.d.wf.transitions || []).slice(0, 300).map(t => ({ from: t.from, event: t.on, to: t.to }))
+    }));
+    return {
+        portfolio: {
+            workflow_count: rows.length,
+            state_count: rows.reduce((sum, r) => sum + r.stateCount, 0),
+            transition_count: rows.reduce((sum, r) => sum + r.transitionCount, 0),
+            cost_opportunity_illustrative: rows.reduce((sum, r) => sum + r.opportunityCost, 0),
+            time_opportunity_minutes_illustrative: rows.reduce((sum, r) => sum + r.opportunityTime, 0),
+            applied_cost_illustrative: rows.reduce((sum, r) => sum + r.appliedCost, 0),
+            applied_time_minutes_illustrative: rows.reduce((sum, r) => sum + r.appliedTime, 0),
+            finding_count: rows.reduce((sum, r) => sum + r.findings, 0),
+            average_analysis_coverage_percent: Math.round(rows.reduce((sum, r) => sum + r.coverage, 0) / Math.max(1, rows.length))
+        },
+        workflows: workflows
+    };
+}
+
+function strategicAiSignature(payload) {
+    return JSON.stringify(payload);
+}
+
+async function runStrategicAi(rows) {
+    if (strategicAiState.status === "running" || !rows.length)
+        return;
+    const payload = strategicAiPayload(rows);
+    const signature = strategicAiSignature(payload);
+    strategicAiSaveMessage = "";
+    strategicAiState = Object.assign({}, strategicAiState, { status: "running", error: "" });
+    renderSigma();
+    try {
+        if (!CTX || !CTX.llm || !CTX.llm.analyzeStrategicPortfolio)
+            throw new Error("AI analysis is unavailable on this server.");
+        const result = await CTX.llm.analyzeStrategicPortfolio(payload);
+        strategicAiState = { status: "success", result: result, signature: signature, error: "",
+            source: "live", reportId: null, createdAt: null, aiGeneratedAt: new Date().toISOString(),
+            mathematicalSnapshot: payload.portfolio, workflowSnapshots: [] };
+        auth_1.logHistory("ai", "Ran AI strategic analysis across " + rows.length + " workflows");
+    }
+    catch (error) {
+        strategicAiState = Object.assign({}, strategicAiState, { status: "error",
+            error: (error && error.message) || "AI analysis could not be completed." });
+    }
+    renderSigma();
+}
+
+function downloadStrategicAiReport(rows) {
+    if (!strategicAiState.result)
+        return;
+    const report = {
+        generated_at: new Date().toISOString(),
+        advisory_notice: "AI-generated optimization guidance. Mathematical values remain illustrative and are not recalculated by AI.",
+        mathematical_snapshot: strategicAiState.mathematicalSnapshot || strategicAiPayload(rows).portfolio,
+        report: strategicAiState.result
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(report, null, 2)], { type: "application/json" }));
+    const link = dom_1.el("a", { href: url, download: "plumbline-ai-optimization-report.json" });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    auth_1.logHistory("download", "Downloaded AI optimization report");
+}
+
+function reportDate(value, fallback) {
+    const date = value ? new Date(value) : null;
+    return date && Number.isFinite(date.getTime()) ? date.toLocaleString() : (fallback || "Unknown date");
+}
+
+function strategicWorkflowSnapshots(rows) {
+    return rows.map((row, index) => ({
+        sourceWorkflowKey: String(row.d.sourceWorkflowId || (row.d.wf && row.d.wf.id) || row.d.id || ("workflow-" + index)),
+        sourceWorkflowId: row.d.sourceWorkflowId || null,
+        sourceVersionId: row.d.sourceWorkflowVersionId || null,
+        name: row.name,
+        workflowCreatedAt: row.d.sourceWorkflowCreatedAt || null,
+        snapshot: ws_1.unified(row.d)
+    }));
+}
+
+async function saveStrategicAiAnalysis(rows) {
+    if (!strategicAiState.result || strategicAiSaving || strategicAiState.reportId)
+        return;
+    if (!CTX || !CTX.auth || !CTX.auth.currentUser || !CTX.auth.currentUser()) {
+        strategicAiSaveMessage = "Sign in to save this analysis to your account.";
+        if (CTX && CTX.auth && CTX.auth.showAuth) CTX.auth.showAuth(true, "login");
+        renderSigma();
+        return;
+    }
+    if (!rows.length) {
+        strategicAiSaveMessage = "This historical report is already saved.";
+        renderSigma();
+        return;
+    }
+    strategicAiSaving = true;
+    strategicAiSaveMessage = "Saving report…";
+    renderSigma();
+    try {
+        const names = rows.map(r => r.name);
+        const saved = await CTX.data.saveAiAnalysisReport({
+            title: names.length === 1 ? names[0] + " optimization report" :
+                "Portfolio optimization · " + names.length + " workflows",
+            report: strategicAiState.result,
+            mathematicalSnapshot: strategicAiState.mathematicalSnapshot || strategicAiPayload(rows).portfolio,
+            inputSignature: strategicAiState.signature,
+            aiGeneratedAt: strategicAiState.aiGeneratedAt,
+            workflows: strategicWorkflowSnapshots(rows)
+        });
+        strategicAiState.reportId = saved.reportId;
+        strategicAiState.createdAt = saved.createdAt;
+        strategicAiState.workflowSnapshots = strategicWorkflowSnapshots(rows);
+        strategicAiSaveMessage = "Saved to Previous AI analyses at " + reportDate(saved.createdAt) + ".";
+        auth_1.logHistory("ai", "Saved AI optimization report for " + rows.length + " workflows");
+    }
+    catch (error) {
+        strategicAiSaveMessage = "Could not save report: " + ((error && error.message) || error);
+    }
+    finally {
+        strategicAiSaving = false;
+        renderSigma();
+    }
+}
+
+function aiReportOverlay(open) {
+    const overlay = dom_1.$("aiReportOverlay");
+    if (overlay) overlay.style.display = open ? "flex" : "none";
+}
+
+function aiReportWorkflowLocations() {
+    const map = new Map();
+    aiReportExplorerState.reports.forEach(report => (report.workflows || []).forEach(workflow => {
+        const key = String(workflow.workflowKey || workflow.workflowId || workflow.name || "workflow");
+        if (!map.has(key)) map.set(key, { key, name: workflow.name || "Untitled workflow", count: 0,
+            workflowCreatedAt: workflow.workflowCreatedAt || null });
+        map.get(key).count += 1;
+    }));
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function aiReportMatchesLocation(report) {
+    if (aiReportExplorerState.workflowKey === "all") return true;
+    return (report.workflows || []).some(workflow =>
+        String(workflow.workflowKey || workflow.workflowId || workflow.name || "workflow") === aiReportExplorerState.workflowKey);
+}
+
+function renderAiReportExplorer() {
+    const tree = dom_1.$("aiReportTree");
+    const places = dom_1.$("aiReportWorkflowPlaces");
+    const openButton = dom_1.$("aiReportOpen");
+    if (!tree || !places) return;
+    places.innerHTML = "";
+    aiReportWorkflowLocations().forEach(location => {
+        const button = dom_1.el("button", { class: "libPlace" + (aiReportExplorerState.workflowKey === location.key ? " on" : ""), type: "button" });
+        button.append(dom_1.el("span", { class: "aiReportFolderIcon", "aria-hidden": "true" }, "▱"),
+            dom_1.el("span", {}, location.name), dom_1.el("small", {}, String(location.count)));
+        button.title = location.workflowCreatedAt ? "Workflow created " + reportDate(location.workflowCreatedAt) : "Saved workflow snapshot";
+        button.addEventListener("click", () => {
+            aiReportExplorerState.workflowKey = location.key;
+            aiReportExplorerState.selectedId = null;
+            renderAiReportExplorer();
+        });
+        places.append(button);
+    });
+    const all = dom_1.$("aiReportAll");
+    if (all) all.classList.toggle("on", aiReportExplorerState.workflowKey === "all");
+    if (dom_1.$("aiReportCount")) dom_1.$("aiReportCount").textContent = String(aiReportExplorerState.reports.length);
+    const location = aiReportExplorerState.workflowKey === "all" ? null :
+        aiReportWorkflowLocations().find(row => row.key === aiReportExplorerState.workflowKey);
+    if (dom_1.$("aiReportLocation")) dom_1.$("aiReportLocation").textContent = location ? location.name : "All analyses";
+
+    const query = aiReportExplorerState.filter.trim().toLowerCase();
+    const visible = aiReportExplorerState.reports.filter(report => aiReportMatchesLocation(report) && (!query ||
+        String(report.title || "").toLowerCase().includes(query) ||
+        (report.workflows || []).some(workflow => String(workflow.name || "").toLowerCase().includes(query))));
+    tree.innerHTML = "";
+    if (!visible.length) {
+        tree.append(dom_1.el("div", { class: "aiReportEmpty" },
+            dom_1.el("strong", {}, aiReportExplorerState.busy ? "Loading analyses…" : "No saved analyses here"),
+            dom_1.el("p", {}, aiReportExplorerState.busy ? "Reading your account history." : "Run an AI analysis, then choose Save AI analysis.")));
+    }
+    visible.forEach(report => {
+        const selected = aiReportExplorerState.selectedId === report.reportId;
+        const row = dom_1.el("div", { class: "aiReportRow" + (selected ? " selected" : ""), role: "option",
+            tabindex: "0", "aria-selected": String(selected) });
+        const identity = dom_1.el("div", { class: "aiReportIdentity" },
+            dom_1.el("span", { class: "aiReportFileIcon", "aria-hidden": "true" }, "✦"),
+            dom_1.el("div", {}, dom_1.el("strong", {}, report.title || "AI optimization report")));
+        const workflowMeta = dom_1.el("div", { class: "aiReportWorkflowMeta" });
+        (report.workflows || []).forEach(workflow => workflowMeta.append(dom_1.el("span", {},
+            (workflow.name || "Workflow") + " · created " + reportDate(workflow.workflowCreatedAt, "date unavailable"))));
+        identity.lastChild.append(workflowMeta);
+        const created = dom_1.el("div", { class: "aiReportCreated" },
+            dom_1.el("strong", {}, reportDate(report.createdAt)),
+            dom_1.el("small", {}, (report.workflowCount || (report.workflows || []).length) + " workflow" +
+                ((report.workflowCount || (report.workflows || []).length) === 1 ? "" : "s")));
+        const action = dom_1.btn("Open", () => loadAiAnalysisReport(report.reportId), "btn ghost tiny");
+        function select() {
+            aiReportExplorerState.selectedId = report.reportId;
+            renderAiReportExplorer();
+        }
+        row.addEventListener("click", select);
+        row.addEventListener("dblclick", () => loadAiAnalysisReport(report.reportId));
+        row.addEventListener("keydown", event => {
+            if (event.key === "Enter") loadAiAnalysisReport(report.reportId);
+            else if (event.key === " ") { event.preventDefault(); select(); }
+        });
+        action.addEventListener("click", event => event.stopPropagation());
+        row.append(identity, created, action);
+        tree.append(row);
+    });
+    if (openButton) openButton.disabled = !aiReportExplorerState.selectedId || aiReportExplorerState.busy;
+}
+
+async function openAiReportExplorer() {
+    if (!CTX || !CTX.auth || !CTX.auth.currentUser || !CTX.auth.currentUser()) {
+        if (CTX && CTX.auth && CTX.auth.showAuth) CTX.auth.showAuth(true, "login");
+        return;
+    }
+    aiReportExplorerState.busy = true;
+    aiReportExplorerState.selectedId = null;
+    aiReportExplorerState.filter = "";
+    aiReportExplorerState.workflowKey = "all";
+    if (dom_1.$("aiReportSearch")) dom_1.$("aiReportSearch").value = "";
+    aiReportOverlay(true);
+    renderAiReportExplorer();
+    try {
+        aiReportExplorerState.reports = await CTX.data.listAiAnalysisReports(250);
+        if (dom_1.$("aiReportStatus")) dom_1.$("aiReportStatus").textContent =
+            aiReportExplorerState.reports.length + " saved analysis" + (aiReportExplorerState.reports.length === 1 ? "" : "es");
+    }
+    catch (error) {
+        aiReportExplorerState.reports = [];
+        if (dom_1.$("aiReportStatus")) dom_1.$("aiReportStatus").textContent =
+            "Could not load analyses: " + ((error && error.message) || error);
+    }
+    finally {
+        aiReportExplorerState.busy = false;
+        renderAiReportExplorer();
+    }
+}
+
+async function loadAiAnalysisReport(reportId) {
+    if (!reportId || aiReportExplorerState.busy) return;
+    aiReportExplorerState.busy = true;
+    if (dom_1.$("aiReportStatus")) dom_1.$("aiReportStatus").textContent = "Opening saved analysis…";
+    renderAiReportExplorer();
+    try {
+        const saved = await CTX.data.loadAiAnalysisReport(reportId);
+        strategicAiState = { status: "success", result: saved.report, signature: saved.inputSignature || "", error: "",
+            source: "saved", reportId: saved.reportId, createdAt: saved.createdAt,
+            aiGeneratedAt: saved.aiGeneratedAt, mathematicalSnapshot: saved.mathematicalSnapshot,
+            workflowSnapshots: saved.workflows || [] };
+        strategicAiSaveMessage = "Loaded saved analysis from " + reportDate(saved.createdAt) + ".";
+        strategicView = "ai";
+        ws_1.setActive(-1);
+        aiReportOverlay(false);
+        full();
+    }
+    catch (error) {
+        if (dom_1.$("aiReportStatus")) dom_1.$("aiReportStatus").textContent =
+            "Could not open analysis: " + ((error && error.message) || error);
+    }
+    finally {
+        aiReportExplorerState.busy = false;
+        renderAiReportExplorer();
+    }
+}
+
+function strategicOptimizationActions(actions, portfolio) {
+    const host = dom_1.el("div", { class: "strategicOptimizationActions" });
+    (actions || []).slice().sort((a, b) => (a.sequence || 0) - (b.sequence || 0)).forEach((action, index) => {
+        const card = dom_1.el("article", { class: "strategicOptimizationAction" });
+        const heading = dom_1.el("div", { class: "strategicOptimizationActionHead" },
+            dom_1.el("span", {}, String(action.sequence || index + 1)),
+            dom_1.el("h5", {}, action.change || "Optimization action"));
+        card.append(heading);
+        if (portfolio && Array.isArray(action.workflows) && action.workflows.length) {
+            const workflows = dom_1.el("div", { class: "strategicOptimizationWorkflows" });
+            action.workflows.forEach(name => workflows.append(dom_1.el("span", {}, name)));
+            card.append(workflows);
+        }
+        const details = portfolio
+            ? [["Leverage", action.leverage], ["How", action.how], ["Why", action.reason], ["Measure", action.success_measure]]
+            : [["How", action.how], ["Why", action.reason], ["Measure", action.success_measure]];
+        details.forEach(pair => {
+            // Reports saved before cross-workflow leverage was introduced do
+            // not have this field. Keep those historical reports clean while
+            // requiring it for every newly generated portfolio analysis.
+            if (pair[0] === "Leverage" && !pair[1])
+                return;
+            card.append(dom_1.el("div", { class: "strategicOptimizationDetail" },
+                dom_1.el("strong", {}, pair[0]), dom_1.el("p", {}, pair[1] || "Not specified.")));
+        });
+        host.append(card);
+    });
+    if (!host.childNodes.length)
+        host.append(dom_1.el("p", { class: "hint" }, "No actionable optimization steps were returned. Run the report again."));
+    return host;
+}
+
+function renderStrategicAi(dashboard, rows) {
+    const payload = strategicAiPayload(rows);
+    const signature = strategicAiSignature(payload);
+    const stale = strategicAiState.source === "live" && !!strategicAiState.result && strategicAiState.signature !== signature;
+    const hero = dom_1.el("section", { class: "strategicAiHero" },
+        dom_1.el("div", { class: "strategicHeroCopy" },
+            dom_1.el("div", { class: "strategicEyebrow" }, "Claude advisory review"),
+            dom_1.el("h2", {}, "Interpret the portfolio with AI"),
+            dom_1.el("p", {}, "Claude identifies how the open workflows can reinforce each other through shared capabilities, handoffs, standards, and sequencing. It runs only when you choose Run AI analysis.")));
+    const actionBox = dom_1.el("div", { class: "strategicAiRun" });
+    const run = dom_1.btn(strategicAiState.status === "running" ? "Analyzing…" :
+        (strategicAiState.result ? "Run again" : "Run AI analysis"), () => runStrategicAi(rows), "btn primary");
+    run.disabled = strategicAiState.status === "running" || !rows.length;
+    const actionButtons = dom_1.el("div", { class: "strategicAiRunButtons" }, run);
+    if (strategicAiState.result) {
+        const save = dom_1.btn(strategicAiSaving ? "Saving…" : (strategicAiState.reportId ? "Analysis saved" : "Save AI analysis"),
+            () => saveStrategicAiAnalysis(rows), "btn ghost");
+        save.disabled = strategicAiSaving || strategicAiState.status === "running" || !!strategicAiState.reportId;
+        actionButtons.append(save);
+    }
+    actionButtons.append(dom_1.btn("Previous analyses", openAiReportExplorer, "btn ghost"));
+    actionBox.append(actionButtons,
+        dom_1.el("small", {}, rows.length ? "Manual only · sends the current mathematical summary and workflow structure" :
+            "Open workflows to run a new analysis, or browse account history."));
+    if (strategicAiSaveMessage)
+        actionBox.append(dom_1.el("small", { class: "strategicAiSaveStatus" }, strategicAiSaveMessage));
+    hero.append(actionBox);
+    dashboard.append(hero);
+
+    if (strategicAiState.status === "running")
+        dashboard.append(dom_1.el("section", { class: "strategicAiStatus", role: "status" },
+            dom_1.el("span", { class: "strategicAiSpinner", "aria-hidden": "true" }),
+            dom_1.el("div", {}, dom_1.el("strong", {}, "Claude is reviewing the open workflows"),
+                dom_1.el("p", {}, "You can leave this view; the result will appear when it is ready."))));
+    if (strategicAiState.status === "error")
+        dashboard.append(dom_1.el("section", { class: "strategicAiError", role: "alert" },
+            dom_1.el("strong", {}, "AI analysis did not run"), dom_1.el("p", {}, strategicAiState.error)));
+
+    const result = strategicAiState.result;
+    if (!result && strategicAiState.status !== "running" && strategicAiState.status !== "error")
+        dashboard.append(dom_1.el("section", { class: "strategicAiEmpty" },
+            dom_1.el("div", { class: "strategicAiIcon", "aria-hidden": "true" }, "✦"),
+            dom_1.el("h3", {}, "No AI analysis has been run"),
+            dom_1.el("p", {}, "Your workflows remain in the normal app flow until you press Run AI analysis.")));
+    if (result) {
+        const resultBox = dom_1.el("section", { class: "strategicAiResult" });
+        if (strategicAiState.source === "saved") {
+            const context = dom_1.el("div", { class: "strategicAiSavedContext", role: "status" },
+                dom_1.el("strong", {}, "Historical report · saved " + reportDate(strategicAiState.createdAt)));
+            const workflows = dom_1.el("div", { class: "strategicAiSavedWorkflows" });
+            (strategicAiState.workflowSnapshots || []).forEach(workflow => workflows.append(dom_1.el("span", {},
+                (workflow.name || "Workflow") + " · created " + reportDate(workflow.workflowCreatedAt, "date unavailable"))));
+            context.append(workflows, dom_1.el("small", {}, "This report uses preserved workflow snapshots and remains available if the live workflows change or are deleted."));
+            resultBox.append(context);
+        }
+        if (stale)
+            resultBox.append(dom_1.el("div", { class: "strategicAiStale", role: "status" },
+                "Workflows have changed since this review. Run again to refresh it."));
+        const reportHead = dom_1.el("div", { class: "strategicAiReportHead" },
+            dom_1.el("div", {}, dom_1.el("div", { class: "strategicEyebrow" }, "AI optimization report"),
+                dom_1.el("h3", {}, "How the workflows can improve each other")));
+        reportHead.append(dom_1.btn("Download report", () => downloadStrategicAiReport(rows), "btn ghost"));
+        resultBox.append(reportHead, dom_1.el("div", { class: "strategicEyebrow" }, "Executive summary"),
+            dom_1.el("p", { class: "strategicAiSummary" }, result.executive_summary || "No summary was returned."));
+
+        const together = result.portfolio_optimization || {};
+        const portfolioPlan = dom_1.el("section", { class: "strategicOptimizationPlan strategicPortfolioPlan" },
+            dom_1.el("div", { class: "strategicOptimizationPlanHead" },
+                dom_1.el("div", {}, dom_1.el("div", { class: "strategicEyebrow" }, "Cross-workflow leverage plan"),
+                    dom_1.el("h4", {}, "Optimize the workflows as one portfolio")),
+                dom_1.el("p", {}, together.objective || "Coordinate shared capabilities and improvements across the portfolio.")));
+        portfolioPlan.append(strategicOptimizationActions(together.actions, true));
+        resultBox.append(portfolioPlan);
+
+        const priorities = dom_1.el("div", { class: "strategicAiPriorities" });
+        (result.priorities || []).forEach((item, index) => priorities.append(dom_1.el("article", {},
+            dom_1.el("span", {}, String(index + 1)),
+            dom_1.el("div", {}, dom_1.el("h4", {}, item.title || "Priority"),
+                dom_1.el("small", {}, item.workflow || "Portfolio-wide"),
+                dom_1.el("p", {}, item.rationale || "")))));
+        if (priorities.childNodes.length)
+            resultBox.append(dom_1.el("div", { class: "strategicSectionHead strategicAiSectionHead" },
+                dom_1.el("div", {}, dom_1.el("div", { class: "strategicEyebrow" }, "Cross-workflow priorities"), dom_1.el("h3", {}, "Where coordination creates value"))), priorities);
+        const lists = dom_1.el("div", { class: "strategicAiLists" });
+        [["Patterns", result.patterns], ["Risks and questions", result.risks]].forEach(pair => {
+            const article = dom_1.el("article", {}, dom_1.el("h3", {}, pair[0]));
+            const list = dom_1.el("ul", {});
+            (pair[1] || []).forEach(item => list.append(dom_1.el("li", {}, item)));
+            if (!list.childNodes.length)
+                list.append(dom_1.el("li", {}, "None identified from the supplied data."));
+            article.append(list);
+            lists.append(article);
+        });
+        resultBox.append(lists);
+        dashboard.append(resultBox);
+    }
+    dashboard.append(dom_1.el("p", { class: "strategicDisclaimer" },
+        "AI analysis is advisory. Claude interprets the supplied mathematical results; it does not recalculate them, certify findings, or make changes to workflows."));
+}
+
 function renderSigma() {
     setAnalysisPanMode(false);
     const scroll = dom_1.$("cvscroll");
@@ -996,11 +1436,20 @@ function renderSigma() {
     box.style.display = "block";
     box.innerHTML = "";
     const docs = ws_1.getDocs();
+    const dashboard = dom_1.el("div", { class: "strategicDashboard" });
+    dashboard.append(strategicModeTabs());
     if (!docs.length) {
-        box.append(dom_1.el("div", { class: "strategicEmpty" },
+        if (strategicView === "ai") {
+            renderStrategicAi(dashboard, []);
+            box.append(dashboard);
+            renderStrategicSidePanel([]);
+            return;
+        }
+        dashboard.append(dom_1.el("div", { class: "strategicEmpty" },
             dom_1.el("div", { class: "strategicMark" }, "Σ"),
             dom_1.el("h2", {}, "Strategic value starts with a workflow"),
             dom_1.el("p", {}, "Create, open, or add an example workflow to compare opportunities across your portfolio.")));
+        box.append(dashboard);
         renderStrategicSidePanel([]);
         return;
     }
@@ -1013,12 +1462,16 @@ function renderSigma() {
     const appliedTime = rows.reduce((sum, r) => sum + r.appliedTime, 0);
     const averageCoverage = Math.round(rows.reduce((sum, r) => sum + r.coverage, 0) / rows.length);
 
-    const dashboard = dom_1.el("div", { class: "strategicDashboard" });
+    if (strategicView === "ai") {
+        renderStrategicAi(dashboard, rows);
+        box.append(dashboard);
+        return;
+    }
     const hero = dom_1.el("section", { class: "strategicHero" });
     const heroCopy = dom_1.el("div", { class: "strategicHeroCopy" },
-        dom_1.el("div", { class: "strategicEyebrow" }, "Portfolio intelligence"),
-        dom_1.el("h2", {}, "Strategic value across open workflows"),
-        dom_1.el("p", {}, "Compare the opportunity identified by all six Plumbline checks with the value already applied to each workflow."));
+        dom_1.el("div", { class: "strategicEyebrow" }, "Deterministic portfolio calculation"),
+        dom_1.el("h2", {}, "Mathematical analysis across open workflows"),
+        dom_1.el("p", {}, "Compare locally calculated cost, time, findings, and coverage. This view uses workflow data and fixed Plumbline rules—no AI is called."));
     const heroActions = dom_1.el("div", { class: "strategicHeroActions" });
     heroActions.append(dom_1.btn("Apply across workflows", applyAll, "btn primary"));
     heroActions.append(dom_1.btn("Export summary", downloadCurrent, "btn ghost"));
@@ -1092,7 +1545,7 @@ function renderSigma() {
             dom_1.el("article", {}, dom_1.el("span", {}, "Largest cost opportunity"), dom_1.el("strong", {}, costLeader.name), dom_1.el("small", {}, dom_1.fmt(costLeader.opportunityCost) + " illustrative")),
             dom_1.el("article", {}, dom_1.el("span", {}, "Largest time opportunity"), dom_1.el("strong", {}, timeLeader.name), dom_1.el("small", {}, dom_1.fmin(timeLeader.opportunityTime) + " illustrative")),
             dom_1.el("article", {}, dom_1.el("span", {}, "Needs the most analysis"), dom_1.el("strong", {}, coverageLeader.name), dom_1.el("small", {}, coverageLeader.completedTools + " of 6 checks applied"))));
-    dashboard.append(insights, dom_1.el("p", { class: "strategicDisclaimer" }, "Savings are assumption-based estimates. Open a workflow to inspect its lemma-certified and refuted structural findings."));
+    dashboard.append(insights, dom_1.el("p", { class: "strategicDisclaimer" }, "This view is purely mathematical and does not call AI. Savings are assumption-based estimates; open a workflow to inspect its formally certified or refuted structural findings."));
     box.append(dashboard);
 }
 /* ---------- right panel: Tools / Table / JSON / Analysis ---------- */
@@ -1648,9 +2101,12 @@ function syncStudioControls() {
     if (all) {
         all.textContent = strategic ? "Apply across workflows" : "Apply all improvements";
         all.title = strategic ? "Apply all six checks to every open workflow" : "Apply all six checks to this workflow";
+        all.hidden = strategic && strategicView === "ai";
     }
-    if (download)
+    if (download) {
         download.textContent = strategic ? "Export summary" : "Download";
+        download.hidden = strategic && strategicView === "ai";
+    }
     ["btnAdd", "btnFill", "btnEstimate", "btnSaveStudio"].forEach(id => {
         const control = dom_1.$(id);
         if (control)
@@ -1841,6 +2297,26 @@ function init() {
     dom_1.$("btnAll").addEventListener("click", applyAll);
     dom_1.$("btnLoadJson").addEventListener("click", loadJson);
     dom_1.$("btnDownload").addEventListener("click", downloadCurrent);
+    if (dom_1.$("aiReportClose")) dom_1.$("aiReportClose").addEventListener("click", () => aiReportOverlay(false));
+    if (dom_1.$("aiReportAll")) dom_1.$("aiReportAll").addEventListener("click", () => {
+        aiReportExplorerState.workflowKey = "all";
+        aiReportExplorerState.selectedId = null;
+        renderAiReportExplorer();
+    });
+    if (dom_1.$("aiReportSearch")) dom_1.$("aiReportSearch").addEventListener("input", event => {
+        aiReportExplorerState.filter = event.target.value || "";
+        aiReportExplorerState.selectedId = null;
+        renderAiReportExplorer();
+    });
+    if (dom_1.$("aiReportOpen")) dom_1.$("aiReportOpen").addEventListener("click", () =>
+        loadAiAnalysisReport(aiReportExplorerState.selectedId));
+    if (dom_1.$("aiReportOverlay")) dom_1.$("aiReportOverlay").addEventListener("click", event => {
+        if (event.target === dom_1.$("aiReportOverlay")) aiReportOverlay(false);
+    });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Escape" && dom_1.$("aiReportOverlay") && dom_1.$("aiReportOverlay").style.display !== "none")
+            aiReportOverlay(false);
+    });
     dom_1.$("fileWf").addEventListener("change", e => { var _a; const f = (_a = e.target.files) === null || _a === void 0 ? void 0 : _a[0]; if (f)
         f.text().then(txt => ws_1.ingest(ws_1.safe(txt), "Upload")); });
     document.querySelectorAll("[data-tool]").forEach(b => b.addEventListener("click", () => runTool(+b.getAttribute("data-tool"))));

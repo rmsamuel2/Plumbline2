@@ -9,6 +9,7 @@
 //   004 settings  account-backed application preferences (JSONB)
 //   005 ordering  persistent workflow library ordering
 //   006 AI edits  account-scoped AI workflow edit history
+//   007 reports   durable AI optimization reports + workflow snapshots
 //
 // Every authenticated request runs inside db.tx(), which sets the RLS context
 // (app.user_id / app.is_superuser) the schema's policies read.
@@ -25,6 +26,7 @@ const crypto = require("crypto");
 const { query, one, tx } = require("./db.js");
 const { persistVersionContent } = require("./normalize.js");
 const llm = require("./llm.js");
+const { normalizeReportPayload } = require("./ai-analysis-reports.js");
 
 const app = express();
 app.use(express.json({ limit: "8mb" }));
@@ -147,7 +149,7 @@ async function logActivity(userId, action, meta) {
 
 /* ---- health ---------------------------------------------------------------- */
 app.get("/api/health", async (_req, res, next) => {
-  try { await query("select 1"); res.json({ ok: true, schema: "001-006" }); }
+  try { await query("select 1"); res.json({ ok: true, schema: "001-007" }); }
   catch (e) { next(e); }
 });
 
@@ -596,7 +598,7 @@ app.get("/api/v2/versions/:versionId/analyses", requireSession, async (req, res,
 app.get("/api/workflows", requireSession, async (req, res, next) => {
   try {
     const rows = await tx(ctx(req), ({ q }) =>
-      q("select w.workflow_id as id, w.name, w.updated_at as \"savedAt\", " +
+      q("select w.workflow_id as id, w.name, w.created_at as \"createdAt\", w.updated_at as \"savedAt\", " +
         " w.description, w.group_id as \"groupId\", w.sort_order as \"sortOrder\", w.visibility, w.lifecycle, " +
         " (w.owner_user_id = $1) as \"isMine\", " +
         " coalesce(v.tools_executed, '[]'::jsonb) as tools, " +
@@ -614,7 +616,7 @@ app.post("/api/workflows", requireSession, saveWorkflowHandler);
 app.get("/api/workflows/:id", requireSession, async (req, res, next) => {
   try {
     const v = await tx(ctx(req), ({ o }) =>
-      o("select w.workflow_id as id, w.name, v.snapshot as workflow, v.config, " +
+      o("select w.workflow_id as id, w.name, w.created_at as \"createdAt\", v.snapshot as workflow, v.config, " +
         " v.tools_executed as \"toolsExecuted\", v.layout, v.created_at as \"savedAt\", " +
         " v.version_id as \"versionId\", v.version_number as \"versionNumber\" " +
         "from workflow w join workflow_version v on v.version_id = w.current_version_id " +
@@ -677,9 +679,9 @@ app.post("/api/workflows/:id/visibility", requireSession, async (req, res, next)
 app.get("/api/groups/:id/workflows", requireSession, async (req, res, next) => {
   try {
     const rows = await tx(ctx(req), ({ q }) =>
-      q("select w.workflow_id as id, w.name, w.description, " +
+      q("select w.workflow_id as id, w.name, w.description, w.created_at as \"createdAt\", " +
         " v.snapshot as workflow, v.config, v.tools_executed as \"toolsExecuted\", " +
-        " v.layout, v.version_number as \"versionNumber\", w.sort_order as \"sortOrder\" " +
+        " v.layout, v.version_id as \"versionId\", v.version_number as \"versionNumber\", w.sort_order as \"sortOrder\" " +
         "from workflow w join workflow_version v on v.version_id = w.current_version_id " +
         "where w.group_id = $1 and w.owner_user_id = $2 and w.lifecycle = 'ACTIVE' " +
         "order by w.sort_order, lower(w.name)", [req.params.id, req.session.userid]));
@@ -826,8 +828,15 @@ app.get("/api/admin/users/:id/workflows", requireSuperuser, async (req, res, nex
     const user = await one("select id, username, display_name as \"displayName\" from users where id=$1",
       [req.params.id]);
     if (!user) return res.status(404).json({ error: "User not found" });
+    const groups = await query(
+      "select t.group_id as \"groupId\", t.parent_group_id as \"parentGroupId\", " +
+      " t.name, g.description, t.depth, t.path " +
+      "from v_workflow_tree t join workflow_group g on g.group_id=t.group_id " +
+      "where t.owner_user_id=$1 order by t.path",
+      [req.params.id]);
     const rows = await query(
       "select w.workflow_id as id, w.name, w.description, w.lifecycle, w.visibility, " +
+      " w.group_id as \"groupId\", w.sort_order as \"sortOrder\", " +
       " w.created_at as \"createdAt\", w.updated_at as \"savedAt\", " +
       " v.version_id as \"currentVersionId\", v.version_number as \"versionNumber\", " +
       " v.kind, v.created_at as \"versionCreatedAt\" " +
@@ -836,8 +845,9 @@ app.get("/api/admin/users/:id/workflows", requireSuperuser, async (req, res, nex
       [req.params.id]);
     await query("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
       "values ($1,'SU_VIEWED_USER_WORKFLOWS','users',$2,$3)",
-      [req.session.userid, req.params.id, JSON.stringify({ rows: rows.length })]);
-    res.json({ user, workflows: rows });
+      [req.session.userid, req.params.id,
+       JSON.stringify({ rows: rows.length, groups: groups.length })]);
+    res.json({ user, groups, workflows: rows });
   } catch (e) { next(e); }
 });
 app.get("/api/admin/workflows/:id", requireSuperuser, async (req, res, next) => {
@@ -924,7 +934,8 @@ app.post("/api/llm", async (req, res, next) => {
     const { intent, payload, model } = req.body || {};
     res.json(await llm.handle(intent, payload, model));
   } catch (e) {
-    if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e && e.expose && Number.isInteger(e.status))
+      return res.status(e.status).json({ error: e.message });
     next(e);
   }
 });
@@ -986,6 +997,99 @@ app.post("/api/ai/workflow-edit", requireSession, limitAiEdits, async (req, res,
   }
 });
 
+/* Durable AI optimization report history. Each row owns independent workflow
+ * snapshots, so a later workflow edit or deletion cannot rewrite the report. */
+app.get("/api/ai/analysis-reports", requireSession, async (req, res, next) => {
+  try {
+    const requestedLimit = Number(req.query.limit || 100);
+    const limit = Math.max(1, Math.min(250,
+      Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 100));
+    const rows = await tx(ctx(req), ({ q }) => q(
+      "select r.report_id as \"reportId\", r.title, r.ai_generated_at as \"aiGeneratedAt\", " +
+      "r.created_at as \"createdAt\", count(rw.position)::integer as \"workflowCount\", " +
+      "coalesce(jsonb_agg(jsonb_build_object(" +
+      "'workflowKey',rw.source_workflow_key,'workflowId',rw.source_workflow_id," +
+      "'name',rw.workflow_name,'workflowCreatedAt',rw.workflow_created_at," +
+      "'capturedAt',rw.captured_at) order by rw.position) " +
+      "filter (where rw.report_id is not null), '[]'::jsonb) as workflows " +
+      "from ai_analysis_report r left join ai_analysis_report_workflow rw on rw.report_id=r.report_id " +
+      "where r.user_id=$1 group by r.report_id order by r.created_at desc limit $2",
+      [req.session.userid, limit]
+    ));
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+app.get("/api/ai/analysis-reports/:id", requireSession, async (req, res, next) => {
+  try {
+    const detail = await tx(ctx(req), async ({ o, q }) => {
+      const report = await o(
+        "select report_id as \"reportId\", title, report, " +
+        "mathematical_snapshot as \"mathematicalSnapshot\", input_signature as \"inputSignature\", " +
+        "ai_generated_at as \"aiGeneratedAt\", created_at as \"createdAt\" " +
+        "from ai_analysis_report where report_id=$1 and user_id=$2",
+        [req.params.id, req.session.userid]
+      );
+      if (!report) return null;
+      report.workflows = await q(
+        "select position, source_workflow_key as \"sourceWorkflowKey\", " +
+        "source_workflow_id as \"sourceWorkflowId\", workflow_name as name, " +
+        "workflow_created_at as \"workflowCreatedAt\", source_version_id as \"sourceVersionId\", " +
+        "workflow_snapshot as snapshot, captured_at as \"capturedAt\" " +
+        "from ai_analysis_report_workflow where report_id=$1 order by position",
+        [req.params.id]
+      );
+      return report;
+    });
+    if (!detail) return res.status(404).json({ error: "AI analysis report not found" });
+    await logActivity(req.session.userid, "open_ai_analysis_report", { reportId: detail.reportId });
+    res.json(detail);
+  } catch (e) { next(e); }
+});
+
+app.post("/api/ai/analysis-reports", requireSession, async (req, res, next) => {
+  try {
+    const value = normalizeReportPayload(req.body);
+    const saved = await tx(ctx(req), async ({ o }) => {
+      const report = await o(
+        "insert into ai_analysis_report(user_id,title,report,mathematical_snapshot,input_signature,ai_generated_at) " +
+        "values ($1,$2,$3::jsonb,$4::jsonb,$5,$6) " +
+        "returning report_id as \"reportId\", created_at as \"createdAt\"",
+        [req.session.userid, value.title, JSON.stringify(value.report),
+         JSON.stringify(value.mathematicalSnapshot), value.inputSignature, value.aiGeneratedAt]
+      );
+      for (const workflow of value.workflows) {
+        const current = workflow.sourceWorkflowId ? await o(
+          "select created_at as \"createdAt\", current_version_id::text as \"versionId\" " +
+          "from workflow where workflow_id::text=$1 and owner_user_id=$2",
+          [workflow.sourceWorkflowId, req.session.userid]
+        ) : null;
+        await o(
+          "insert into ai_analysis_report_workflow(report_id,position,source_workflow_key," +
+          "source_workflow_id,workflow_name,workflow_created_at,source_version_id,workflow_snapshot) " +
+          "values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb) returning report_id",
+          [report.reportId, workflow.position, workflow.sourceWorkflowKey,
+           workflow.sourceWorkflowId, workflow.name,
+           (current && current.createdAt) || workflow.workflowCreatedAt,
+           workflow.sourceVersionId || (current && current.versionId),
+           JSON.stringify(workflow.snapshot)]
+        );
+      }
+      return report;
+    });
+    await logActivity(req.session.userid, "save_ai_analysis_report", {
+      reportId: saved.reportId, workflowCount: value.workflows.length
+    });
+    res.status(201).json(Object.assign({}, saved, {
+      title: value.title, workflowCount: value.workflows.length
+    }));
+  } catch (e) {
+    if (e && e.expose && Number.isInteger(e.status))
+      return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
 /* ---- errors ------------------------------------------------------------------ */
 app.use((err, _req, res, _next) => {
   console.error(err);
@@ -1004,7 +1108,7 @@ if (require.main === module) {
       process.exitCode = 1;
       return;
     }
-    console.log("Plumbline API (schema 001-006) on :" + PORT);
+    console.log("Plumbline API (schema 001-007) on :" + PORT);
   });
   app.locals.httpServer = httpServer;
 }

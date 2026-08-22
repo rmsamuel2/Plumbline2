@@ -1069,8 +1069,14 @@ function openWorkflow(id, asCopy) {
     if (!rec) throw new Error("not found");
     appendDoc(rec.workflow);
     var d = ws_1.D();
-    if (d) d.name = asCopy ? ((rec.name || "Workflow") + " (copy)")
-                           : (rec.name || d.name);
+    if (d) {
+      d.name = asCopy ? ((rec.name || "Workflow") + " (copy)") : (rec.name || d.name);
+      if (!asCopy) {
+        d.sourceWorkflowId = rec.id || id;
+        d.sourceWorkflowCreatedAt = rec.createdAt || null;
+        d.sourceWorkflowVersionId = rec.versionId || null;
+      }
+    }
     deliver();
     status("");
     close();
@@ -1088,7 +1094,12 @@ function openFolder(groupId) {
     rows.forEach(function (r) {
       appendDoc(r.workflow, r.name || "Library");
       var d = ws_1.D();
-      if (d && r.name) d.name = r.name;
+      if (d) {
+        if (r.name) d.name = r.name;
+        d.sourceWorkflowId = r.id;
+        d.sourceWorkflowCreatedAt = r.createdAt || null;
+        d.sourceWorkflowVersionId = r.versionId || null;
+      }
     });
     deliver();
     status("");
@@ -1161,7 +1172,12 @@ function openSelected() {
         if (!rec) throw new Error("workflow " + (index + 1) + " was not found");
         appendDoc(rec.workflow, rec.name || records[index].name || "Library");
         var d = ws_1.D();
-        if (d) d.name = rec.name || records[index].name || d.name;
+        if (d) {
+          d.name = rec.name || records[index].name || d.name;
+          d.sourceWorkflowId = rec.id || records[index].id;
+          d.sourceWorkflowCreatedAt = rec.createdAt || records[index].createdAt || null;
+          d.sourceWorkflowVersionId = rec.versionId || null;
+        }
       });
       deliver();
       clearSelection(false);

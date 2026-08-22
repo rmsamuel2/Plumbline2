@@ -276,6 +276,47 @@
       <div id="libContextMenu" class="libContextMenu" role="menu" aria-label="Explorer actions" hidden></div>
     </aside>
   </div>
+  <div id="aiReportOverlay" class="libOverlay" style="display:none">
+    <aside class="libPanel aiReportExplorer" role="dialog" aria-modal="true" aria-labelledby="aiReportExplorerTitle">
+      <div class="libHead">
+        <div class="libTitleBlock">
+          <span class="libEyebrow">Account history</span>
+          <span class="libTitle" id="aiReportExplorerTitle">Previous AI analyses</span>
+        </div>
+        <button class="libWindowClose" id="aiReportClose" type="button" aria-label="Close previous AI analyses" title="Close">&times;</button>
+      </div>
+      <div class="libCommandBar">
+        <div class="libAddress" aria-label="Current AI report location">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h8l4 4v13H7z"></path><path d="M15 3.5v4h4M10 12h6m-6 4h6"></path></svg>
+          <span>Plumbline</span><b aria-hidden="true">›</b><strong id="aiReportLocation">All analyses</strong>
+        </div>
+        <label class="libSearchBox" for="aiReportSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>
+          <input id="aiReportSearch" type="search" placeholder="Search analyses and workflows" autocomplete="off">
+        </label>
+      </div>
+      <div class="libBrowser">
+        <nav class="libPlaces aiReportPlaces" aria-label="AI analysis locations">
+          <div class="libPlacesTitle">Locations</div>
+          <button id="aiReportAll" class="libPlace on" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h8l4 4v13H7z"></path><path d="M15 3.5v4h4M10 12h6m-6 4h6"></path></svg>
+            <span>All analyses</span><small id="aiReportCount">0</small>
+          </button>
+          <div class="libPlacesTitle aiReportWorkflowTitle">Workflows</div>
+          <div id="aiReportWorkflowPlaces"></div>
+          <div class="libSelectionHint">Reports keep their workflow snapshots even after the live workflow changes or is deleted.</div>
+        </nav>
+        <section class="libContents" aria-label="Saved AI analysis reports">
+          <div class="libColumns aiReportColumns" aria-hidden="true"><span>Name</span><span>Created</span><span>Actions</span></div>
+          <div id="aiReportTree" class="libTree aiReportTree" role="listbox" aria-label="Previous AI analyses"></div>
+        </section>
+      </div>
+      <div class="libFoot aiReportFoot">
+        <div id="aiReportStatus" class="libStatus" role="status"></div>
+        <button class="btn primary" id="aiReportOpen" type="button" disabled>Open report</button>
+      </div>
+    </aside>
+  </div>
   <div id="libraryConfirmModal" class="modal" style="display:none">
     <div class="modalbox libraryConfirmBox" role="alertdialog" aria-modal="true" aria-labelledby="libraryConfirmTitle" aria-describedby="libraryConfirmMessage">
       <button class="modalclose" id="libraryConfirmClose" type="button" aria-label="Close confirmation dialog">&times;</button>
@@ -405,13 +446,38 @@
   </div>
   <div id="maintenanceWorkflowModal" class="modal" style="display:none">
     <div class="modalbox maintenanceWorkflowBox" role="dialog" aria-modal="true" aria-labelledby="maintenanceWorkflowTitle">
-      <button class="modalclose" id="maintenanceWorkflowClose" type="button" aria-label="Close">×</button>
-      <div class="maintenanceEyebrow">Superuser workflow access</div>
-      <h2 id="maintenanceWorkflowTitle">User workflows</h2>
-      <p id="maintenanceWorkflowSubtitle">View or edit workflows stored for this account.</p>
+      <div class="libHead maintenanceExplorerHead">
+        <div class="libTitleBlock">
+          <span class="libEyebrow">Superuser workflow access</span>
+          <span class="libTitle" id="maintenanceWorkflowTitle">User Explorer</span>
+        </div>
+        <button class="libWindowClose" id="maintenanceWorkflowClose" type="button" aria-label="Close user Explorer" title="Close user Explorer">×</button>
+      </div>
+      <div class="libCommandBar maintenanceExplorerCommandBar">
+        <div class="libAddress" aria-label="Current maintenance Explorer location">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10h-17z"></path></svg>
+          <span>Users</span><b aria-hidden="true">›</b><strong id="maintenanceWorkflowBreadcrumb">Workflows</strong>
+        </div>
+        <label class="libSearchBox" for="maintenanceWorkflowSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>
+          <input id="maintenanceWorkflowSearch" type="search" placeholder="Search this user's workflows and folders" autocomplete="off">
+        </label>
+      </div>
+      <p id="maintenanceWorkflowSubtitle" class="maintenanceExplorerSubtitle">View the current database version or open an audited edit.</p>
       <div id="maintenanceWorkflowStatus" class="maintenanceStatus" role="status"></div>
       <div class="maintenanceWorkflowGrid">
-        <aside id="maintenanceWorkflowList" class="maintenanceWorkflowList" aria-label="User workflows"></aside>
+        <section class="maintenanceWorkflowContents" aria-label="User workflow Explorer">
+          <div id="maintenanceWorkflowSelectionBar" class="maintenanceWorkflowSelectionBar" hidden>
+            <strong id="maintenanceWorkflowSelectionCount">0 workflows selected</strong>
+            <div>
+              <button id="maintenanceWorkflowViewSelected" class="btn tiny ghost" type="button">View selected</button>
+              <button id="maintenanceWorkflowEditSelected" class="btn tiny" type="button">Edit selected</button>
+              <button id="maintenanceWorkflowClearSelection" class="btn tiny ghost" type="button">Clear</button>
+            </div>
+          </div>
+          <div class="libColumns maintenanceExplorerColumns" aria-hidden="true"><span>Name</span><span>Version</span><span>Actions</span></div>
+          <div id="maintenanceWorkflowList" class="libTree maintenanceWorkflowList" role="tree" aria-label="User folders and workflows"></div>
+        </section>
         <section id="maintenanceWorkflowDetail" class="maintenanceWorkflowDetail" aria-label="Workflow view mode"></section>
       </div>
     </div>

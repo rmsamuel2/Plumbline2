@@ -9,7 +9,9 @@ const {
   mapAnthropicError,
   mapGeneratedTransitionKeys,
   countOptionalSchemaProperties,
-  editWorkflowSchema
+  editWorkflowSchema,
+  strategicAnalysisSchema,
+  promptFor
 } = require("../src/llm.js");
 
 function workflow() {
@@ -121,6 +123,34 @@ test("AI edits always receive the server-owned Workflow Builder explanation", fu
   assert.match(system, /states are editable boxes/i);
   assert.match(system, /transitions are directed connections/i);
   assert.match(system, /complete, internally consistent workflow/i);
+});
+
+test("strategic AI output is structured and all fields are required", function () {
+  assert.deepEqual(strategicAnalysisSchema.required,
+    ["executive_summary", "priorities", "patterns", "risks",
+      "portfolio_optimization"]);
+  assert.deepEqual(strategicAnalysisSchema.properties.priorities.items.required,
+    ["title", "workflow", "rationale"]);
+  assert.deepEqual(
+    strategicAnalysisSchema.properties.portfolio_optimization
+      .properties.actions.items.required,
+    ["sequence", "workflows", "change", "leverage", "how", "reason", "success_measure"]
+  );
+  assert.equal(countOptionalSchemaProperties(strategicAnalysisSchema), 0);
+});
+
+test("strategic AI prompt forbids recomputing or inventing mathematical results", function () {
+  const prompt = promptFor("strategic_analysis", {
+    analysis: { portfolio: { workflow_count: 2, cost_opportunity_illustrative: 50 } }
+  });
+  assert.match(prompt, /Do not recompute, invent, extrapolate, or certify/i);
+  assert.match(prompt, /illustrative assumptions, not guaranteed savings/i);
+  assert.match(prompt, /zero coverage does not invalidate findings/i);
+  assert.match(prompt, /Do not claim low coverage means checks have not run/i);
+  assert.match(prompt, /do not create isolated optimization plans for individual workflows/i);
+  assert.match(prompt, /how the workflows can leverage each other/i);
+  assert.match(prompt, /at least two supplied workflows/i);
+  assert.match(prompt, /"workflow_count": 2/);
 });
 
 test("maps provider details to safe public errors", function () {

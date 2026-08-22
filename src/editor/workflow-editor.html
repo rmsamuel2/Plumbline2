@@ -1093,6 +1093,50 @@
       margin-top: 6px;
     }
 
+    .editorActionDock {
+      position: sticky;
+      top: -18px;
+      z-index: 45;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 12px -18px 14px;
+      padding: 10px 18px;
+      border-top: 1px solid #d8dce3;
+      border-bottom: 1px solid #cbd5e1;
+      background: rgba(248, 250, 252, .96);
+      box-shadow: 0 5px 13px rgba(15, 23, 42, .08);
+      backdrop-filter: blur(8px);
+    }
+    .editorActionDockCopy {
+      min-width: 0;
+      display: grid;
+      gap: 1px;
+    }
+    .editorActionDockCopy strong {
+      color: #111827;
+      font-size: 12px;
+    }
+    .editorActionDockCopy span {
+      overflow: hidden;
+      color: #667085;
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .editorActionDockButtons {
+      display: flex;
+      align-items: center;
+      flex: 0 0 auto;
+      gap: 6px;
+    }
+    .editorActionDockButtons button {
+      min-height: 32px;
+      padding: 5px 9px;
+      white-space: nowrap;
+    }
+
     .typeTools {
       display: grid;
       gap: 8px;
@@ -1809,6 +1853,9 @@
     html[data-theme="dark"] .depList,
     html[data-theme="dark"] .ctxMenu,
     html[data-theme="dark"] .inspectorActionBar { background:#111c29;border-color:var(--line);color:var(--ink) }
+    html[data-theme="dark"] .editorActionDock { background:rgba(17,28,41,.96);border-color:var(--line) }
+    html[data-theme="dark"] .editorActionDockCopy strong { color:var(--ink) }
+    html[data-theme="dark"] .editorActionDockCopy span { color:var(--muted) }
     html[data-theme="dark"] .userBadge { background:#1d2a3a;border-color:var(--line);color:var(--muted) }
     html[data-theme="dark"] .userBadge.signedIn { background:#183b36;color:var(--accent) }
     html[data-theme="dark"] .newProcessDialog { background:#172231;color:var(--ink);border-color:var(--line) }
@@ -1829,6 +1876,11 @@
     html[data-theme="dark"] .inspectorTab:hover,
     html[data-theme="dark"] .inspectorTab[aria-selected="true"] { background:#172231;color:var(--ink) }
     html[data-theme="dark"] .inspectorPane { background:#172231;color:var(--ink) }
+
+    @media (max-width: 720px) {
+      .editorActionDock { align-items:stretch;flex-direction:column }
+      .editorActionDockButtons { width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr)) }
+    }
     html[data-theme="dark"] .jsonToolsHeader { border-color:var(--line) }
     html[data-theme="dark"] .jsonAction { background:#111c29;border-color:var(--line) }
     html[data-theme="dark"] .jsonAction strong { color:var(--ink) }
@@ -5330,6 +5382,10 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       if (selected.type) return;
       details.innerHTML = `
         <h3>Edit Process</h3>
+        <div class="editorActionDock" role="toolbar" aria-label="Process actions">
+          <div class="editorActionDockCopy"><strong>Process actions</strong><span>Save without leaving your current position.</span></div>
+          <div class="editorActionDockButtons"><button class="primary" type="submit" form="processForm">Save Process</button></div>
+        </div>
         <form class="editForm" id="processForm">
           <label>Name <input name="name" value="${esc(data.process.name)}"></label>
           <label>Description <textarea class="grow" name="description">${esc(data.process.description || "")}</textarea></label>
@@ -5338,11 +5394,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
             <label>Owner team <input name="owner_team" value="${esc(data.process.owner_team || "")}"></label>
           </div>
           <label>Naming convention <textarea class="grow" name="naming_convention">${esc(data.process.naming_convention || "")}</textarea></label>
-          <div class="buttonRow">
-            <button class="primary" type="submit">Save Process</button>
-          </div>
         </form>
       `;
+      details.scrollTop = 0;
       document.getElementById("processForm").addEventListener("submit", event => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -5369,6 +5423,13 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
           <div>Owner</div><div>${esc(stage.owner_role || "")}</div>
           <div>Boxes</div><div>${states.length}</div>
         </div>
+        <div class="editorActionDock" role="toolbar" aria-label="Category actions">
+          <div class="editorActionDockCopy"><strong>Category actions</strong><span>Save or remove this category from anywhere in the panel.</span></div>
+          <div class="editorActionDockButtons">
+            <button class="primary" type="submit" form="stageForm">Save Category</button>
+            <button type="button" id="deleteStage" class="danger">Delete Category</button>
+          </div>
+        </div>
         <h3>Edit Category</h3>
         <form class="editForm" id="stageForm">
           <label>Category name <input name="name" value="${esc(stage.name)}"></label>
@@ -5379,12 +5440,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
           <label>Owner role <input name="owner_role" value="${esc(stage.owner_role || "")}"></label>
           <label>Color <input name="visual_color" type="color" value="${esc(stage.visual_color || "#64748b")}"></label>
           <label>Description <textarea name="description">${esc(stage.description || "")}</textarea></label>
-          <div class="buttonRow">
-            <button class="primary" type="submit">Save Category</button>
-            <button type="button" id="deleteStage" class="danger">Delete Category</button>
-          </div>
         </form>
       `;
+      details.scrollTop = 0;
       document.getElementById("stageForm").addEventListener("submit", event => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -5452,6 +5510,14 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
           <span class="pill">${esc(state.state_key)}</span>
           <span class="pill">${esc(state.state_type)}</span>
           <span class="pill">${esc(state.stage_name || state.stage_key)}</span>
+        </div>
+        <div class="editorActionDock" role="toolbar" aria-label="Box actions">
+          <div class="editorActionDockCopy"><strong>Box actions</strong><span>Update, duplicate, or delete without scrolling to the end.</span></div>
+          <div class="editorActionDockButtons">
+            <button class="primary" type="submit" id="updateBox" form="stateForm">Update</button>
+            <button type="button" id="duplicateState">Duplicate</button>
+            <button type="button" id="deleteState" class="danger">Delete Box</button>
+          </div>
         </div>
         <div class="kv">
           <div>Owner</div><div>${esc(state.owner_role || "")}</div>
@@ -5539,13 +5605,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
             ${currentData.states.filter(other => other.state_key !== state.state_key).map(other => `<label><input type="checkbox" class="depCheck" value="${esc(other.state_key)}" ${(Array.isArray(state.depends_on) && state.depends_on.indexOf(other.state_key) >= 0) ? "checked" : ""}> ${esc(other.name)} <span class="muted">(${esc(other.state_key)})</span></label>`).join("") || "<span class='depEmpty'>Add another box first to set a dependency.</span>"}
           </div>
 
-          <div class="buttonRow">
-            <button class="primary" type="submit" id="updateBox">Update</button>
-            <button type="button" id="duplicateState">Duplicate</button>
-            <button type="button" id="deleteState" class="danger">Delete Box</button>
-          </div>
         </form>
       `;
+      details.scrollTop = 0;
       document.getElementById("stateForm").addEventListener("submit", event => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -5711,6 +5773,13 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
           <div>Guard</div><div>${esc(transition.guard_condition || "")}</div>
           <div>Action</div><div>${esc(transition.action || "")}</div>
         </div>
+        <div class="editorActionDock" role="toolbar" aria-label="Connection actions">
+          <div class="editorActionDockCopy"><strong>Connection actions</strong><span>Save or remove this connection from anywhere in the panel.</span></div>
+          <div class="editorActionDockButtons">
+            <button class="primary" type="submit" form="transitionForm">Save Connection</button>
+            <button type="button" id="deleteTransition" class="danger">Delete Connection</button>
+          </div>
+        </div>
         <h3>Edit Connection</h3>
         <form class="editForm" id="transitionForm">
           <div class="formGrid">
@@ -5726,12 +5795,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
           <label>Guard condition <input name="guard_condition" value="${esc(transition.guard_condition || "")}"></label>
           <label>Action <input name="action" value="${esc(transition.action || "")}"></label>
           <label>Description <textarea name="description">${esc(transition.description || "")}</textarea></label>
-          <div class="buttonRow">
-            <button class="primary" type="submit">Save Connection</button>
-            <button type="button" id="deleteTransition" class="danger">Delete Connection</button>
-          </div>
         </form>
       `;
+      details.scrollTop = 0;
       document.getElementById("transitionForm").addEventListener("submit", event => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -6931,8 +6997,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
 
 
 
-    // Variant B inspector workflow: stage form changes until Accept Pending is clicked.
-    const INSPECTOR_VARIANT_B = true;
+    // Direct-save inspector workflow. The contextual action dock stays visible,
+    // so requiring a second "Accept Pending" click only adds friction.
+    const INSPECTOR_VARIANT_B = false;
     let inspectorPending = null;
     let bypassInspectorIntercept = false;
 

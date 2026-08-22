@@ -199,6 +199,22 @@ window.PlumblineData = (function () {
       return api("/api/ai/workflow-edits/" + encodeURIComponent(editId));
     },
 
+    /* ---- saved AI strategic analysis reports --------------------------------- */
+    saveAiAnalysisReport: function (report) {
+      return api("/api/ai/analysis-reports", {
+        method: "POST", body: report || {}, timeoutMs: 30000
+      });
+    },
+    listAiAnalysisReports: function (limit) {
+      var safeLimit = Math.max(1, Math.min(250, Number(limit) || 100));
+      return api("/api/ai/analysis-reports?limit=" + encodeURIComponent(safeLimit),
+        { timeoutMs: 30000 });
+    },
+    loadAiAnalysisReport: function (reportId) {
+      return api("/api/ai/analysis-reports/" + encodeURIComponent(reportId),
+        { timeoutMs: 30000 });
+    },
+
     /* ---- online history (activity_log) ------------------------------------------ */
     appendHistory: function (a, m) {
       return api("/api/history", { method: "POST", body: { action: a, meta: m } });

@@ -4,7 +4,7 @@
 //   001_init.sql               original base schema
 //   002_production_schema.sql  = plumbline_supabase_setup.sql (001 + migration 002)
 //   003_security_patch.sql     = plumbline_supabase_patch_003.sql
-//   004-006                    settings, workflow ordering, AI edit history
+//   004-007                    settings, ordering, AI edit + analysis history
 const fs = require("fs");
 const path = require("path");
 const { pool } = require("./db.js");

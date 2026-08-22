@@ -3,7 +3,7 @@
 The backend for two of Plumbline's five layers, over the **production
 database schema** (001 base + migration 002 + security patch 003 + account
 settings migration 004 + workflow ordering migration 005 + AI edit history
-migration 006):
+migrations 006-007):
 
 - **Data interaction layer** — the `PlumblineData` gateway talks here: auth
   (bcrypt, signed httpOnly session cookie, hashed remember tokens), the atomic
@@ -88,7 +88,7 @@ The front-end finds the API through `window.PLUMBLINE_API` (set in
 | POST | `/api/admin/users/:id/password` | superuser: `admin_reset_password()` |
 | POST | `/api/admin/users/:id/revoke-sessions` | superuser: `admin_revoke_sessions()` |
 | POST | `/api/admin/users/:id/active` | superuser: activate / deactivate |
-| GET  | `/api/admin/users/:id/workflows` | superuser: list a user's workflows (audited) |
+| GET  | `/api/admin/users/:id/workflows` | superuser: list a user's folders and workflows (audited) |
 | GET/POST | `/api/admin/workflows/:id` · `/api/admin/workflows/:id/versions` | superuser: view a workflow or append an audited edit version |
 | GET  | `/api/admin/audit` | superuser: append-only audit log |
 | POST | `/api/admin/purge-expired-auth` | superuser: `purge_expired_auth()` (pg_cron also runs it nightly on Supabase) |
@@ -108,6 +108,7 @@ migrations/003_security_patch.sql     = plumbline_supabase_patch_003.sql
 migrations/004_user_settings.sql      account-backed JSONB preferences
 migrations/005_workflow_sort_order.sql persistent library ordering
 migrations/006_ai_edit_history.sql    account-scoped AI request/result history
+migrations/007_ai_analysis_reports.sql durable AI optimization reports with preserved workflow snapshots
 src/db.js        Postgres pool + RLS-context transactions (SET LOCAL app.user_id)
 src/normalize.js snapshot → normalized FSM tables (both snapshot dialects)
 src/index.js     Express app: auth, folders, versioned workflows, analyses,
