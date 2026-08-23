@@ -175,13 +175,8 @@ function computeTool(d, i) {
             add({ title: "No duplicates or dead branches", found: "Every step is reachable and behaviourally distinct — a clean result.", time: 0, cost: 0, clarity: true, apply: () => { } });
     }
     else if (i === 2) { // plan vs reality
-        const hold = w.states.find(s => s.role === "hold") || w.states.find(s => s.role === "quality");
-        const anchor = hold || w.states.find(s => s.role !== "terminal" && !s.initial) || w.states[0];
-        const p = d.pos[anchor.id] || { x: ws_1.PAD, y: ws_1.PAD };
-        const down = w.states.filter(s => s.role !== "terminal").reduce((a, s) => a + (d.cost[s.id] || 0), 0);
-        add({ title: "Unplanned hold seen in the logs", found: "At “" + anchor.label + "” the executed logs show an out-of-order hold the documented process never authorises.",
-            time: 30, cost: Math.round(down * 0.10),
-            apply: (o) => { o.ghosts.push({ x: p.x, y: p.y - 58, text: "⚠ unplanned hold (in logs, not in plan)" }); o.flag[anchor.id] = { color: "#B2453C" }; } });
+        add({ title: "No event log recorded", found: "Plan vs. reality compares the documented process against what the executed records actually show. No event log exists yet, so there is nothing to compare against — this is a stated gap, not a clean result.",
+            time: 0, cost: 0, clarity: true, apply: () => { } });
     }
     else if (i === 3) { // move the decision
         const decs = w.states.filter(s => s.role === "decision");
@@ -2535,4 +2530,3 @@ exports.runTool      = runTool;
    "@plumbline/lemma":"packages/lemma/src/index.ts",
    "@plumbline/core":"packages/core/src/index.ts",
    "./presets":"studio/presets.ts"});
-
