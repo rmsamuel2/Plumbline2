@@ -12,6 +12,7 @@
  *   explainFinding(finding)    — a plain-business paragraph for one finding
  *   suggestTileName(context)   — propose a name for a box/step/team
  *   summarizeWorkflow(wf)      — an executive one-paragraph read of the process
+ *   analyzeStrategicPortfolio  — manually requested cross-workflow interpretation
  *
  * Providers (interchangeable, same interface):
  *   • MockProvider     — offline, deterministic heuristics. No key, no network.
@@ -93,6 +94,10 @@ window.PlumblineLLM = (function () {
         return { text: "This workflow has " + n + " states and " + t + " transitions. " +
                        "Run the six tools to surface redundant steps, hidden loops, and " +
                        "parallelisable work — each finding carries a certificate or a counterexample." };
+      },
+
+      async analyzeStrategicPortfolio() {
+        throw new Error("AI strategic analysis is unavailable until the Claude connection is configured.");
       }
     };
   }
@@ -118,7 +123,8 @@ window.PlumblineLLM = (function () {
       suggestStageNames(s)   { return call("suggest_stage_names", { stages: s }); },
       explainFinding(f)      { return call("explain_finding", { finding: f }); },
       suggestTileName(c)     { return call("suggest_tile_name", { context: c }); },
-      summarizeWorkflow(wf)  { return call("summarize_workflow", { workflow: wf }); }
+      summarizeWorkflow(wf)  { return call("summarize_workflow", { workflow: wf }); },
+      analyzeStrategicPortfolio(portfolio) { return call("strategic_analysis", { analysis: portfolio }); }
     };
   }
 
@@ -145,7 +151,7 @@ window.PlumblineLLM = (function () {
       active = MockProvider(); return "mock";
     }
   };
-  ["health", "suggestStageNames", "explainFinding", "suggestTileName", "summarizeWorkflow"]
+  ["health", "suggestStageNames", "explainFinding", "suggestTileName", "summarizeWorkflow", "analyzeStrategicPortfolio"]
     .forEach(function (m) {
       gateway[m] = function () { return active[m].apply(active, arguments); };
     });

@@ -52,6 +52,11 @@
       });
       window.addEventListener('message', function(ev){
         var d = ev && ev.data;
+        if(d && d.type === 'plumbline-editor-ready') {
+          if (typeof window.plumblineBroadcastAuth === 'function')
+            setTimeout(window.plumblineBroadcastAuth, 0);
+          return;
+        }
         if(!d || d.type !== 'plumbline-auth') return;
         setTimeout(function(){
           if (typeof window.plumblineShowAuth === 'function') { window.plumblineShowAuth(true); return; }

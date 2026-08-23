@@ -42,7 +42,6 @@ exports["default"] = {
     if (el) el.classList.add("active");
 
     on("homeLogin", function () { auth_1.showAuth(true, "login"); });
-    on("homeSignup", function () { auth_1.showAuth(true, "signup"); });
     on("homeGuest", function () { auth_1.enterGuest(); });
 
     /* These two replace the [data-page] delegate deleted from loader.js. */

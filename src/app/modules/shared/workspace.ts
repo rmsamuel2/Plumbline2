@@ -1087,6 +1087,11 @@ function hydrateDoc(dd) {
 
 /* main.ts:2444-2450 */  /* HOOK: see PHASE1_ASSIGNMENT.md */
 function persist() {
+    const current = active >= 0 ? D() : null;
+    const access = current && (current.adminWorkflowAccess ||
+        current.adminWorkflowEdit || current.adminWorkflowView);
+    if (access && access.mode === "view")
+        return;
     /* workspace view state is ephemeral; saved workflows live in the database.
      * Prompt1: keep the Workflow Editor showing the same thing the Analysis
      * screen is working on — push the (possibly changed) model back. */
@@ -1105,6 +1110,11 @@ catch (e) { } }
 function commit() {
     if (active < 0) { fire("change"); return; }
     const d = D();
+    const access = d && (d.adminWorkflowAccess || d.adminWorkflowEdit || d.adminWorkflowView);
+    if (access && access.mode === "view") {
+        fire("change");
+        return;
+    }
     resetTools(d);
     /* was: renderCanvas(); renderTable(); renderInspector(); syncJson();
        renderTools(); syncToolButtons();  - now the "change" hook. */

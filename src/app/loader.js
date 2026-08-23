@@ -37,6 +37,11 @@
           location.hash = '#' + (map[d.page] || '/home');
           return;
         }
+        if(d.type === 'plumbline-editor-ready') {
+          if (typeof window.plumblineBroadcastAuth === 'function')
+            setTimeout(window.plumblineBroadcastAuth, 0);
+          return;
+        }
         if(d.type === 'plumbline-library' || d.type === 'plumbline-save') return;
         if(d.type !== 'plumbline-auth') return;
         setTimeout(function(){

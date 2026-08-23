@@ -123,6 +123,10 @@ function importEditorData(data, opts = {}) {
     ws_1.rebuild(d);
     const idx = ws_1.getDocs().findIndex(x => x.id === d.id);
     if (idx >= 0) {
+        const prior = ws_1.getDocs()[idx];
+        d.sourceWorkflowId = prior.sourceWorkflowId || null;
+        d.sourceWorkflowCreatedAt = prior.sourceWorkflowCreatedAt || null;
+        d.sourceWorkflowVersionId = prior.sourceWorkflowVersionId || null;
         ws_1.getDocs()[idx] = d;
         ws_1.setActive(idx);
     }
@@ -175,6 +179,13 @@ function setupEditorSync() {
         latestEditorSignature = ws_1.editorDataSignature(msg.data);
         if (latestEditorSignature === lastStudioPushSignature)
             return; // echo of a Studio -> Editor push; both screens already agree
+        /* Maintenance edit mode intentionally targets a database workflow
+         * owned by another user. An unsolicited iframe snapshot must not
+         * replace that explicit document while it is being edited. */
+        const currentDocument = ws_1.getActive() >= 0 ? ws_1.D() : null;
+        if (currentDocument && (currentDocument.adminWorkflowAccess ||
+            currentDocument.adminWorkflowEdit || currentDocument.adminWorkflowView))
+            return;
         const studioVisible = (_a = document.getElementById("studioPage")) === null || _a === void 0 ? void 0 : _a.classList.contains("active");
         if (studioVisible)
             importEditorData(msg.data, { openAnalysis: !!msg.openAnalysis, silent: true });
@@ -392,7 +403,7 @@ exports.init = function (ctx) {
   setupEditorSync();
 
   /* The editor document is separate and cannot reach the module registry, so
-     its Save and Explore Saved buttons post messages. Flush first: the user's
+     its Save and Explorer buttons post messages. Flush first: the user's
      most recent edits live inside the iframe until either path is opened. */
   window.addEventListener("message", function (ev) {
     var d = ev && ev.data;

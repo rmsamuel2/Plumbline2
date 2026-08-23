@@ -7,6 +7,9 @@
 //   003 patch     admin_reset_password() · admin_revoke_sessions() ·
 //                 purge_expired_auth() · append-only audit
 //   004 settings  account-backed application preferences (JSONB)
+//   005 ordering  persistent workflow library ordering
+//   006 AI edits  account-scoped AI workflow edit history
+//   007 reports   durable AI optimization reports + workflow snapshots
 //
 // Every authenticated request runs inside db.tx(), which sets the RLS context
 // (app.user_id / app.is_superuser) the schema's policies read.
@@ -23,6 +26,7 @@ const crypto = require("crypto");
 const { query, one, tx } = require("./db.js");
 const { persistVersionContent } = require("./normalize.js");
 const llm = require("./llm.js");
+const { normalizeReportPayload } = require("./ai-analysis-reports.js");
 
 const app = express();
 app.use(express.json({ limit: "8mb" }));
@@ -42,6 +46,9 @@ const SESSION_SECRET = process.env.SESSION_SECRET || "dev-only-change-me";
 const SESSION_HOURS = 12;
 const REMEMBER_DAYS = 30;
 const cookieBase = { httpOnly: true, sameSite: "strict", secure: IS_PROD, path: "/" };
+const AI_EDIT_WINDOW_MS = 60e3;
+const AI_EDIT_LIMIT = 8;
+const aiEditRequests = new Map();
 
 /* ---- signed session cookie + hashed remember token ----------------------- */
 function sign(id) {
@@ -114,6 +121,23 @@ function requireSuperuser(req, res, next) {
     return res.status(403).json({ error: "Superuser only" });
   next();
 }
+function limitAiEdits(req, res, next) {
+  const now = Date.now();
+  const userId = String(req.session.userid);
+  const recent = (aiEditRequests.get(userId) || [])
+    .filter(function (at) { return now - at < AI_EDIT_WINDOW_MS; });
+  if (recent.length >= AI_EDIT_LIMIT) {
+    res.set("Retry-After", String(Math.ceil(
+      (AI_EDIT_WINDOW_MS - (now - recent[0])) / 1000
+    )));
+    return res.status(429).json({
+      error: "Too many AI edits. Please wait a moment and try again."
+    });
+  }
+  recent.push(now);
+  aiEditRequests.set(userId, recent);
+  next();
+}
 function ctx(req) {
   return { userId: req.session ? req.session.userid : null,
            isSuperuser: !!(req.session && req.session.usertype === "superuser") };
@@ -125,14 +149,14 @@ async function logActivity(userId, action, meta) {
 
 /* ---- health ---------------------------------------------------------------- */
 app.get("/api/health", async (_req, res, next) => {
-  try { await query("select 1"); res.json({ ok: true, schema: "001-005" }); }
+  try { await query("select 1"); res.json({ ok: true, schema: "001-007" }); }
   catch (e) { next(e); }
 });
 
 /* =============================================================================
  * AUTH
  * ===========================================================================*/
-app.post("/api/signup", async (req, res, next) => {
+app.post("/api/signup", requireSuperuser, async (req, res, next) => {
   try {
     const b = req.body || {};
     const email = String(b.email || "").trim().toLowerCase();
@@ -150,7 +174,7 @@ app.post("/api/signup", async (req, res, next) => {
       "values ($1,$2,$3,$1) returning id",
       [username, email, hash]);
     await query("insert into audit_log(actor_user_id, action, entity_type, entity_id) " +
-                "values ($1,'USER_CREATED','users',$1)", [row.id]);
+                "values ($1,'USER_CREATED','users',$2)", [req.session.userid, row.id]);
     res.status(201).json({ userId: row.id });
   } catch (e) {
     if (e.code === "23505") return res.status(409).json({ error: "Username or email already exists" });
@@ -253,6 +277,12 @@ app.patch("/api/settings", requireSession, async (req, res, next) => {
     const b = req.body || {};
     const patch = {};
     if (Object.prototype.hasOwnProperty.call(b, "darkMode")) patch.darkMode = !!b.darkMode;
+    if (Object.prototype.hasOwnProperty.call(b, "explorerFolderOrder")) {
+      const rawOrder = Array.isArray(b.explorerFolderOrder) ? b.explorerFolderOrder : [];
+      patch.explorerFolderOrder = Array.from(new Set(rawOrder
+        .map((value) => String(value || "").trim())
+        .filter((value) => value && value.length <= 128))).slice(0, 2000);
+    }
     const u = await one(
       "update users set settings=coalesce(settings, '{}'::jsonb) || $2::jsonb, updated_at=now() " +
       "where id=$1 returning settings",
@@ -568,7 +598,7 @@ app.get("/api/v2/versions/:versionId/analyses", requireSession, async (req, res,
 app.get("/api/workflows", requireSession, async (req, res, next) => {
   try {
     const rows = await tx(ctx(req), ({ q }) =>
-      q("select w.workflow_id as id, w.name, w.updated_at as \"savedAt\", " +
+      q("select w.workflow_id as id, w.name, w.created_at as \"createdAt\", w.updated_at as \"savedAt\", " +
         " w.description, w.group_id as \"groupId\", w.sort_order as \"sortOrder\", w.visibility, w.lifecycle, " +
         " (w.owner_user_id = $1) as \"isMine\", " +
         " coalesce(v.tools_executed, '[]'::jsonb) as tools, " +
@@ -586,7 +616,7 @@ app.post("/api/workflows", requireSession, saveWorkflowHandler);
 app.get("/api/workflows/:id", requireSession, async (req, res, next) => {
   try {
     const v = await tx(ctx(req), ({ o }) =>
-      o("select w.workflow_id as id, w.name, v.snapshot as workflow, v.config, " +
+      o("select w.workflow_id as id, w.name, w.created_at as \"createdAt\", v.snapshot as workflow, v.config, " +
         " v.tools_executed as \"toolsExecuted\", v.layout, v.created_at as \"savedAt\", " +
         " v.version_id as \"versionId\", v.version_number as \"versionNumber\" " +
         "from workflow w join workflow_version v on v.version_id = w.current_version_id " +
@@ -649,9 +679,9 @@ app.post("/api/workflows/:id/visibility", requireSession, async (req, res, next)
 app.get("/api/groups/:id/workflows", requireSession, async (req, res, next) => {
   try {
     const rows = await tx(ctx(req), ({ q }) =>
-      q("select w.workflow_id as id, w.name, w.description, " +
+      q("select w.workflow_id as id, w.name, w.description, w.created_at as \"createdAt\", " +
         " v.snapshot as workflow, v.config, v.tools_executed as \"toolsExecuted\", " +
-        " v.layout, v.version_number as \"versionNumber\", w.sort_order as \"sortOrder\" " +
+        " v.layout, v.version_id as \"versionId\", v.version_number as \"versionNumber\", w.sort_order as \"sortOrder\" " +
         "from workflow w join workflow_version v on v.version_id = w.current_version_id " +
         "where w.group_id = $1 and w.owner_user_id = $2 and w.lifecycle = 'ACTIVE' " +
         "order by w.sort_order, lower(w.name)", [req.params.id, req.session.userid]));
@@ -684,10 +714,15 @@ app.post("/api/history", requireSession, async (req, res, next) => {
  * ===========================================================================*/
 app.get("/api/admin/users", requireSuperuser, async (req, res, next) => {
   try {
-    const rows = await query("select id, username, email, user_type as \"userType\", " +
-      " is_active as \"isActive\", display_name as \"displayName\", team, role, region, " +
-      " created_at as \"createdAt\", updated_at as \"updatedAt\" " +
-      "from v_users_admin order by created_at");
+    const rows = await query("select u.id, u.username, u.email, u.user_type as \"userType\", " +
+      " u.is_active as \"isActive\", u.display_name as \"displayName\", u.team, u.role, u.region, " +
+      " u.created_at as \"createdAt\", u.updated_at as \"updatedAt\", " +
+      " (select count(*)::integer from sessions s where s.user_id=u.id " +
+      "   and s.revoked_at is null and s.expires_at > now()) as \"activeSessions\", " +
+      " (select count(*)::integer from workflow w where w.owner_user_id=u.id " +
+      "   and w.lifecycle='ACTIVE') as \"workflowCount\", " +
+      " (select max(a.at) from activity_log a where a.user_id=u.id and a.action='login') as \"lastLogin\" " +
+      "from v_users_admin u order by u.created_at");
     await query("insert into audit_log(actor_user_id, action, entity_type, details) " +
       "values ($1,'SU_VIEWED_USER_DATA','users',$2)",
       [req.session.userid, JSON.stringify({ rows: rows.length })]);
@@ -717,24 +752,178 @@ app.post("/api/admin/users/:id/revoke-sessions", requireSuperuser, async (req, r
 app.post("/api/admin/users/:id/active", requireSuperuser, async (req, res, next) => {
   try {
     const active = !!(req.body || {}).isActive;
-    await query("update users set is_active = $2 where id = $1", [req.params.id, active]);
-    await query("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
-      "values ($1, $2, 'users', $3, '{}')",
-      [req.session.userid, active ? "SU_ACTIVATED_USER" : "SU_DEACTIVATED_USER", req.params.id]);
+    if (!active && req.params.id === req.session.userid)
+      return res.status(400).json({ error: "You cannot deactivate your own account" });
+    await tx(ctx(req), async ({ q, o }) => {
+      const target = await o("select id, user_type from users where id=$1 for update", [req.params.id]);
+      if (!target) throw new Error("User not found");
+      if (!active && target.user_type === "superuser") {
+        const remaining = await o("select count(*)::integer n from users " +
+          "where user_type='superuser' and is_active and id<>$1", [req.params.id]);
+        if (!remaining || remaining.n < 1) throw new Error("Cannot deactivate the last active superuser");
+      }
+      await q("update users set is_active = $2 where id = $1", [req.params.id, active]);
+      await q("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+        "values ($1, $2, 'users', $3, '{}')",
+        [req.session.userid, active ? "SU_ACTIVATED_USER" : "SU_DEACTIVATED_USER", req.params.id]);
+      if (!active) {
+        await q("update sessions set revoked_at=now() where user_id=$1 and revoked_at is null", [req.params.id]);
+        await q("delete from remember_tokens where user_id=$1", [req.params.id]);
+      }
+    });
     res.json({ ok: true });
+  } catch (e) {
+    if (/not found|last active superuser/i.test(e.message || ""))
+      return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+app.post("/api/admin/users/:id/type", requireSuperuser, async (req, res, next) => {
+  try {
+    const userType = String((req.body || {}).userType || "").toLowerCase();
+    if (!["user", "analyst", "superuser"].includes(userType))
+      return res.status(400).json({ error: "Invalid user type" });
+    if (req.params.id === req.session.userid && userType !== "superuser")
+      return res.status(400).json({ error: "You cannot remove your own superuser access" });
+    await tx(ctx(req), async ({ q, o }) => {
+      const target = await o("select id, user_type from users where id=$1 for update", [req.params.id]);
+      if (!target) throw new Error("User not found");
+      if (target.user_type === "superuser" && userType !== "superuser") {
+        const remaining = await o("select count(*)::integer n from users " +
+          "where user_type='superuser' and is_active and id<>$1", [req.params.id]);
+        if (!remaining || remaining.n < 1) throw new Error("Cannot demote the last active superuser");
+      }
+      await q("update users set user_type=$2 where id=$1", [req.params.id, userType]);
+      await q("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+        "values ($1,'SU_CHANGED_USER_TYPE','users',$2,$3)",
+        [req.session.userid, req.params.id,
+         JSON.stringify({ previousUserType: target.user_type, userType })]);
+    });
+    res.json({ ok: true, userType });
+  } catch (e) {
+    if (/not found|last active superuser/i.test(e.message || ""))
+      return res.status(400).json({ error: e.message });
+    next(e);
+  }
+});
+app.get("/api/admin/status", requireSuperuser, async (req, res, next) => {
+  try {
+    const row = await one("select current_database() as \"databaseName\", " +
+      " current_schema() as \"schemaName\", pg_size_pretty(pg_database_size(current_database())) as \"databaseSize\", " +
+      " (select count(*)::integer from users) as \"totalUsers\", " +
+      " (select count(*)::integer from users where is_active) as \"activeUsers\", " +
+      " (select count(*)::integer from users where user_type='superuser' and is_active) as \"activeSuperusers\", " +
+      " (select count(*)::integer from sessions where revoked_at is null and expires_at > now()) as \"activeSessions\", " +
+      " (select count(*)::integer from workflow where lifecycle='ACTIVE') as \"activeWorkflows\", " +
+      " (select count(*)::integer from workflow_version) as \"workflowVersions\", " +
+      " (select count(*)::integer from analysis_run) as \"analysisRuns\", " +
+      " (select count(*)::integer from audit_log) as \"auditEvents\", now() as \"checkedAt\"");
+    await query("insert into audit_log(actor_user_id, action, entity_type, details) " +
+      "values ($1,'SU_VIEWED_SYSTEM_STATUS','database','{}')", [req.session.userid]);
+    res.json(row);
+  } catch (e) { next(e); }
+});
+app.get("/api/admin/users/:id/workflows", requireSuperuser, async (req, res, next) => {
+  try {
+    const user = await one("select id, username, display_name as \"displayName\" from users where id=$1",
+      [req.params.id]);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    const groups = await query(
+      "select t.group_id as \"groupId\", t.parent_group_id as \"parentGroupId\", " +
+      " t.name, g.description, t.depth, t.path " +
+      "from v_workflow_tree t join workflow_group g on g.group_id=t.group_id " +
+      "where t.owner_user_id=$1 order by t.path",
+      [req.params.id]);
+    const rows = await query(
+      "select w.workflow_id as id, w.name, w.description, w.lifecycle, w.visibility, " +
+      " w.group_id as \"groupId\", w.sort_order as \"sortOrder\", " +
+      " w.created_at as \"createdAt\", w.updated_at as \"savedAt\", " +
+      " v.version_id as \"currentVersionId\", v.version_number as \"versionNumber\", " +
+      " v.kind, v.created_at as \"versionCreatedAt\" " +
+      "from workflow w left join workflow_version v on v.version_id=w.current_version_id " +
+      "where w.owner_user_id=$1 order by w.updated_at desc, lower(w.name)",
+      [req.params.id]);
+    await query("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+      "values ($1,'SU_VIEWED_USER_WORKFLOWS','users',$2,$3)",
+      [req.session.userid, req.params.id,
+       JSON.stringify({ rows: rows.length, groups: groups.length })]);
+    res.json({ user, groups, workflows: rows });
+  } catch (e) { next(e); }
+});
+app.get("/api/admin/workflows/:id", requireSuperuser, async (req, res, next) => {
+  try {
+    const row = await one(
+      "select w.workflow_id as id, w.name, w.description, w.lifecycle, w.visibility, " +
+      " w.owner_user_id as \"ownerUserId\", u.username as \"ownerUsername\", " +
+      " u.display_name as \"ownerDisplayName\", w.updated_at as \"savedAt\", " +
+      " v.version_id as \"versionId\", v.version_number as \"versionNumber\", " +
+      " v.kind, v.snapshot as workflow, v.config, v.tools_executed as \"toolsExecuted\", " +
+      " v.layout, v.created_at as \"versionCreatedAt\" " +
+      "from workflow w join users u on u.id=w.owner_user_id " +
+      "join workflow_version v on v.version_id=w.current_version_id " +
+      "where w.workflow_id=$1",
+      [req.params.id]);
+    if (!row) return res.status(404).json({ error: "Workflow not found" });
+    await query("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+      "values ($1,'SU_VIEWED_USER_WORKFLOW','workflow',$2,$3)",
+      [req.session.userid, req.params.id,
+       JSON.stringify({ ownerUserId: row.ownerUserId, versionId: row.versionId })]);
+    res.json(row);
+  } catch (e) { next(e); }
+});
+app.post("/api/admin/workflows/:id/versions", requireSuperuser, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const out = await tx(ctx(req), async (t) => {
+      const workflow = await t.o(
+        "select workflow_id, owner_user_id, name from workflow where workflow_id=$1 for update",
+        [req.params.id]);
+      if (!workflow) return null;
+      const created = await createVersion(t, workflow.workflow_id, "EDIT",
+        b.label || "Edited by superuser", b, req.session.userid);
+      await t.q("insert into audit_log(actor_user_id, action, entity_type, entity_id, details) " +
+        "values ($1,'SU_EDITED_USER_WORKFLOW','workflow',$2,$3)",
+        [req.session.userid, req.params.id, JSON.stringify({
+          ownerUserId: workflow.owner_user_id,
+          name: workflow.name,
+          versionId: created.version.versionId,
+          versionNumber: created.version.versionNumber
+        })]);
+      return { workflow, created };
+    });
+    if (!out) return res.status(404).json({ error: "Workflow not found" });
+    await logActivity(req.session.userid, "superuser_edit_workflow", {
+      workflowId: req.params.id,
+      ownerUserId: out.workflow.owner_user_id,
+      versionId: out.created.version.versionId
+    });
+    res.status(201).json({
+      ok: true,
+      workflowId: req.params.id,
+      versionId: out.created.version.versionId,
+      versionNumber: out.created.version.versionNumber,
+      normalized: out.created.content
+    });
   } catch (e) { next(e); }
 });
 app.get("/api/admin/audit", requireSuperuser, async (req, res, next) => {
   try {
-    res.json(await query("select audit_id as \"auditId\", actor_user_id as \"actorUserId\", " +
+    const rows = await query("select audit_id as \"auditId\", actor_user_id as \"actorUserId\", " +
       " action, entity_type as \"entityType\", entity_id as \"entityId\", details, " +
-      " occurred_at as \"occurredAt\" from audit_log order by occurred_at desc limit 500"));
+      " occurred_at as \"occurredAt\" from audit_log order by occurred_at desc limit 500");
+    await query("insert into audit_log(actor_user_id, action, entity_type, details) " +
+      "values ($1,'SU_VIEWED_AUDIT_LOG','audit_log',$2)",
+      [req.session.userid, JSON.stringify({ rows: rows.length })]);
+    res.json(rows);
   } catch (e) { next(e); }
 });
 app.post("/api/admin/purge-expired-auth", requireSuperuser, async (req, res, next) => {
   try {
     const rows = await query("select * from purge_expired_auth($1)",
       [Number((req.body || {}).retainDays) || 30]);
+    await query("insert into audit_log(actor_user_id, action, entity_type, details) " +
+      "values ($1,'SU_PURGED_EXPIRED_AUTH','authentication',$2)",
+      [req.session.userid, JSON.stringify(rows[0] || {})]);
     res.json(Object.assign({ ok: true }, rows[0]));
   } catch (e) { next(e); }
 });
@@ -745,7 +934,158 @@ app.post("/api/llm", async (req, res, next) => {
     const { intent, payload, model } = req.body || {};
     res.json(await llm.handle(intent, payload, model));
   } catch (e) {
-    if (e.status === 400) return res.status(400).json({ error: e.message });
+    if (e && e.expose && Number.isInteger(e.status))
+      return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+/* Authenticated AI workflow editing. The response is preview-only: the
+ * browser owns undo/apply, and a separate explicit save creates a DB version. */
+app.get("/api/ai/workflow-edits", requireSession, async (req, res, next) => {
+  try {
+    const requestedLimit = Number(req.query.limit || 30);
+    const limit = Math.max(1, Math.min(100,
+      Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 30));
+    const rows = await tx(ctx(req), ({ q }) => q(
+      "select edit_id as \"editId\", instruction, summary, created_at as \"createdAt\", " +
+      "coalesce(result_workflow->'process'->>'name', 'Untitled Workflow') as \"workflowName\", " +
+      "jsonb_array_length(coalesce(result_workflow->'states', '[]'::jsonb)) as \"stateCount\", " +
+      "jsonb_array_length(coalesce(result_workflow->'transitions', '[]'::jsonb)) as \"transitionCount\" " +
+      "from ai_workflow_edit where user_id=$1 order by created_at desc limit $2",
+      [req.session.userid, limit]
+    ));
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+app.get("/api/ai/workflow-edits/:id", requireSession, async (req, res, next) => {
+  try {
+    const row = await tx(ctx(req), ({ o }) => o(
+      "select edit_id as \"editId\", instruction, summary, " +
+      "source_workflow as \"sourceWorkflow\", result_workflow as workflow, " +
+      "created_at as \"createdAt\" from ai_workflow_edit " +
+      "where edit_id=$1 and user_id=$2",
+      [req.params.id, req.session.userid]
+    ));
+    if (!row) return res.status(404).json({ error: "AI edit not found" });
+    res.json(row);
+  } catch (e) { next(e); }
+});
+
+app.post("/api/ai/workflow-edit", requireSession, limitAiEdits, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const result = await llm.editWorkflow(b.workflow, b.instruction);
+    const history = await tx(ctx(req), ({ o }) => o(
+      "insert into ai_workflow_edit(user_id,instruction,summary,source_workflow,result_workflow) " +
+      "values ($1,$2,$3,$4::jsonb,$5::jsonb) returning edit_id as \"editId\", created_at as \"createdAt\"",
+      [req.session.userid, String(b.instruction || "").trim(), result.summary || "",
+       JSON.stringify(b.workflow), JSON.stringify(result.workflow)]
+    ));
+    await logActivity(req.session.userid, "ai_workflow_edit", {
+      stateCount: result.workflow.states.length,
+      transitionCount: result.workflow.transitions.length,
+      instructionLength: String(b.instruction || "").length,
+      editId: history.editId
+    });
+    res.json(Object.assign({}, result, history));
+  } catch (e) {
+    if (e && e.expose && Number.isInteger(e.status))
+      return res.status(e.status).json({ error: e.message });
+    next(e);
+  }
+});
+
+/* Durable AI optimization report history. Each row owns independent workflow
+ * snapshots, so a later workflow edit or deletion cannot rewrite the report. */
+app.get("/api/ai/analysis-reports", requireSession, async (req, res, next) => {
+  try {
+    const requestedLimit = Number(req.query.limit || 100);
+    const limit = Math.max(1, Math.min(250,
+      Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 100));
+    const rows = await tx(ctx(req), ({ q }) => q(
+      "select r.report_id as \"reportId\", r.title, r.ai_generated_at as \"aiGeneratedAt\", " +
+      "r.created_at as \"createdAt\", count(rw.position)::integer as \"workflowCount\", " +
+      "coalesce(jsonb_agg(jsonb_build_object(" +
+      "'workflowKey',rw.source_workflow_key,'workflowId',rw.source_workflow_id," +
+      "'name',rw.workflow_name,'workflowCreatedAt',rw.workflow_created_at," +
+      "'capturedAt',rw.captured_at) order by rw.position) " +
+      "filter (where rw.report_id is not null), '[]'::jsonb) as workflows " +
+      "from ai_analysis_report r left join ai_analysis_report_workflow rw on rw.report_id=r.report_id " +
+      "where r.user_id=$1 group by r.report_id order by r.created_at desc limit $2",
+      [req.session.userid, limit]
+    ));
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
+app.get("/api/ai/analysis-reports/:id", requireSession, async (req, res, next) => {
+  try {
+    const detail = await tx(ctx(req), async ({ o, q }) => {
+      const report = await o(
+        "select report_id as \"reportId\", title, report, " +
+        "mathematical_snapshot as \"mathematicalSnapshot\", input_signature as \"inputSignature\", " +
+        "ai_generated_at as \"aiGeneratedAt\", created_at as \"createdAt\" " +
+        "from ai_analysis_report where report_id=$1 and user_id=$2",
+        [req.params.id, req.session.userid]
+      );
+      if (!report) return null;
+      report.workflows = await q(
+        "select position, source_workflow_key as \"sourceWorkflowKey\", " +
+        "source_workflow_id as \"sourceWorkflowId\", workflow_name as name, " +
+        "workflow_created_at as \"workflowCreatedAt\", source_version_id as \"sourceVersionId\", " +
+        "workflow_snapshot as snapshot, captured_at as \"capturedAt\" " +
+        "from ai_analysis_report_workflow where report_id=$1 order by position",
+        [req.params.id]
+      );
+      return report;
+    });
+    if (!detail) return res.status(404).json({ error: "AI analysis report not found" });
+    await logActivity(req.session.userid, "open_ai_analysis_report", { reportId: detail.reportId });
+    res.json(detail);
+  } catch (e) { next(e); }
+});
+
+app.post("/api/ai/analysis-reports", requireSession, async (req, res, next) => {
+  try {
+    const value = normalizeReportPayload(req.body);
+    const saved = await tx(ctx(req), async ({ o }) => {
+      const report = await o(
+        "insert into ai_analysis_report(user_id,title,report,mathematical_snapshot,input_signature,ai_generated_at) " +
+        "values ($1,$2,$3::jsonb,$4::jsonb,$5,$6) " +
+        "returning report_id as \"reportId\", created_at as \"createdAt\"",
+        [req.session.userid, value.title, JSON.stringify(value.report),
+         JSON.stringify(value.mathematicalSnapshot), value.inputSignature, value.aiGeneratedAt]
+      );
+      for (const workflow of value.workflows) {
+        const current = workflow.sourceWorkflowId ? await o(
+          "select created_at as \"createdAt\", current_version_id::text as \"versionId\" " +
+          "from workflow where workflow_id::text=$1 and owner_user_id=$2",
+          [workflow.sourceWorkflowId, req.session.userid]
+        ) : null;
+        await o(
+          "insert into ai_analysis_report_workflow(report_id,position,source_workflow_key," +
+          "source_workflow_id,workflow_name,workflow_created_at,source_version_id,workflow_snapshot) " +
+          "values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb) returning report_id",
+          [report.reportId, workflow.position, workflow.sourceWorkflowKey,
+           workflow.sourceWorkflowId, workflow.name,
+           (current && current.createdAt) || workflow.workflowCreatedAt,
+           workflow.sourceVersionId || (current && current.versionId),
+           JSON.stringify(workflow.snapshot)]
+        );
+      }
+      return report;
+    });
+    await logActivity(req.session.userid, "save_ai_analysis_report", {
+      reportId: saved.reportId, workflowCount: value.workflows.length
+    });
+    res.status(201).json(Object.assign({}, saved, {
+      title: value.title, workflowCount: value.workflows.length
+    }));
+  } catch (e) {
+    if (e && e.expose && Number.isInteger(e.status))
+      return res.status(e.status).json({ error: e.message });
     next(e);
   }
 });
@@ -757,6 +1097,19 @@ app.use((err, _req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 8080;
-if (require.main === module)
-  app.listen(PORT, () => console.log("Plumbline API (schema 001-005) on :" + PORT));
+let httpServer = null;
+if (require.main === module) {
+  // Retain the listener explicitly. Besides making graceful shutdown/testing
+  // possible, this prevents short-lived launch hosts from releasing the only
+  // JavaScript reference to the HTTP server immediately after startup.
+  httpServer = app.listen(PORT, error => {
+    if (error) {
+      console.error("Plumbline API failed to listen on :" + PORT + ":", error.message);
+      process.exitCode = 1;
+      return;
+    }
+    console.log("Plumbline API (schema 001-007) on :" + PORT);
+  });
+  app.locals.httpServer = httpServer;
+}
 module.exports = app;

@@ -28,7 +28,6 @@ function saveGuestSettings(settings) {
 }
 function byId(id) { return document.getElementById(id); }
 function authVal(id) { var n = byId(id); return n ? (n.value || "").trim() : ""; }
-function authChecked(id) { var n = byId(id); return !!(n && n.checked); }
 function blankProfile() { return { displayName: "", email: "", team: "", role: "", region: "" }; }
 function profileFromInputs() {
   return {
@@ -52,6 +51,10 @@ function dataProblem(e, targetId) {
 
 function hasAccess() { return guestMode || !!currentUser; }
 function isGuest() { return guestMode && !currentUser; }
+function isSuperuser() {
+  return !!(currentUser && (currentUser.userType === "superuser" ||
+    (currentUser.capabilities || []).indexOf("*") >= 0));
+}
 
 function broadcastAuthToEditor() {
   try {
@@ -82,6 +85,7 @@ function renderAccessState() {
   document.querySelectorAll("[data-account-only]").forEach(function (n) { n.hidden = !currentUser; });
   document.querySelectorAll("[data-anonymous-only]").forEach(function (n) { n.hidden = !!currentUser; });
   document.querySelectorAll("[data-signed-in-only]").forEach(function (n) { n.hidden = !currentUser; });
+  document.querySelectorAll("[data-superuser-only]").forEach(function (n) { n.hidden = !isSuperuser(); });
   document.querySelectorAll("[data-session-badge]").forEach(function (n) { n.hidden = !unlocked; });
   var gate = byId("homeGate"), ready = byId("homeUnlocked");
   if (gate) gate.hidden = unlocked;
@@ -112,12 +116,15 @@ function showAuth(open, mode) {
   if (!m) return;
   m.style.display = open ? "flex" : "none";
   if (!open) return;
-  var authMode = currentUser ? "account" : (mode === "signup" ? "signup" : "login");
+  /* Account creation is an administrative action. Anonymous users always land
+     on sign-in; only a signed-in superuser may reveal the signup panel. */
+  var wantsSignup = mode === "signup" && isSuperuser();
+  var authMode = wantsSignup ? "signup" : (currentUser ? "account" : "login");
   m.setAttribute("data-auth-mode", authMode);
   renderAuth(authMode);
-  var focusId = mode === "signup" ? "signupEmail" : "authUser";
+  var focusId = wantsSignup ? "signupEmail" : "authUser";
   var focusNode = byId(focusId);
-  if (focusNode && !currentUser) setTimeout(function () { focusNode.focus(); }, 0);
+  if (focusNode && (!currentUser || wantsSignup)) setTimeout(function () { focusNode.focus(); }, 0);
 }
 
 async function refreshAccountData() {
@@ -166,17 +173,22 @@ function paintAccountLists() {
 
 function renderAuth(mode) {
   var title = byId("authTitle"), entry = byId("authEntryPanels"), account = byId("authAccountPanel");
-  if (title) title.textContent = currentUser
-    ? "Account — " + (currentUser.displayName || currentUser.username || currentUser.email)
-    : (mode === "signup" ? "Welcome to Plumbline" : "Welcome back");
-  if (entry) entry.hidden = !!currentUser;
-  if (account) account.hidden = !currentUser;
-  if (currentUser) {
+  var creating = mode === "signup" && isSuperuser();
+  if (title) title.textContent = creating
+    ? "Create an account"
+    : (currentUser
+      ? "Account — " + (currentUser.displayName || currentUser.username || currentUser.email)
+      : "Welcome back");
+  if (entry) entry.hidden = !!currentUser && !creating;
+  if (account) account.hidden = !currentUser || creating;
+  if (currentUser && !creating) {
     setMessage("authStatus", "Signed in. Workflows, history, and preferences are stored with your account.", false);
     refreshAccountData();
-  } else {
+  } else if (!creating) {
     setMessage("authStatus", "", false);
     paintAccountLists();
+  } else {
+    setMessage("authStatus", "", false);
   }
 }
 
@@ -193,6 +205,10 @@ async function loadSignedInAccount() {
 }
 
 async function createUser() {
+  if (!isSuperuser()) {
+    setMessage("authStatus", "Only a superuser can create an account.", true);
+    return;
+  }
   var email = authVal("signupEmail").toLowerCase();
   var username = authVal("signupUsername").toLowerCase();
   var pwNode = byId("signupPassword"), password = pwNode ? pwNode.value : "";
@@ -202,11 +218,11 @@ async function createUser() {
   }
   try {
     await PData().signup({ email: email, username: username || null, password: password });
-    await PData().login(email, password, true);
-    await loadSignedInAccount();
-    logHistory("login", "Created account");
-    showAuth(false);
-    if (CTX) CTX.navigate("/editor");
+    if (byId("signupEmail")) byId("signupEmail").value = "";
+    if (byId("signupUsername")) byId("signupUsername").value = "";
+    if (pwNode) pwNode.value = "";
+    logHistory("admin-create-user", "Created account for " + (username || email));
+    setMessage("authStatus", "Account created for " + (username || email) + ".", false);
   } catch (e) { dataProblem(e); }
 }
 
@@ -218,11 +234,13 @@ async function signIn() {
     return;
   }
   try {
-    await PData().login(username, password, authChecked("authRemember"));
+    /* Sign-in persistence is intentionally disabled. A normal session cookie
+       lasts only for the current browser session. */
+    await PData().login(username, password, false);
     await loadSignedInAccount();
     logHistory("login", "Signed in");
     showAuth(false);
-    if (CTX) CTX.navigate("/editor");
+    if (CTX) CTX.navigate("/home");
   } catch (e) { dataProblem(e); }
 }
 
@@ -352,8 +370,32 @@ async function saveCurrentWorkflow() {
     else showAuth(true, "login");
     return;
   }
-  var d = ws_1.D(), name = d.name || d.wf.name || "Workflow";
+  var d = ws_1.D();
+  if (!d) { dom_1.flash("The selected workflow is not available."); return; }
+  var name = d.name || (d.wf && d.wf.name) || "Workflow";
   try {
+    var adminAccess = d.adminWorkflowAccess || d.adminWorkflowEdit || d.adminWorkflowView;
+    if (adminAccess && adminAccess.mode === "view") {
+      dom_1.flash("This workflow is open in read-only mode. Return to Maintenance and choose Edit to make changes.");
+      return;
+    }
+    if (adminAccess && isSuperuser()) {
+      var adminEdit = adminAccess;
+      var adminResult = await PData().admin.saveWorkflowVersion(adminEdit.workflowId, {
+        workflow: ws_1.unified(d),
+        config: {},
+        toolsExecuted: ws_1.activeToolIndexes(d),
+        layout: d.pos,
+        label: "Edited in Maintenance by " + (currentUser.username || currentUser.email || "superuser")
+      });
+      adminEdit.versionNumber = adminResult.versionNumber;
+      var adminBanner = byId("maintenanceEditBanner");
+      if (adminBanner) adminBanner.textContent = "Editing @" + adminEdit.ownerUsername +
+        " · Save creates database version " + ((Number(adminEdit.versionNumber) || 0) + 1);
+      dom_1.flash("Saved v" + adminResult.versionNumber + " to @" + adminEdit.ownerUsername + "â€™s workflow.");
+      logHistory("superuser-edit", "Updated â€œ" + name + "â€ for @" + adminEdit.ownerUsername);
+      return;
+    }
     var r = await PData().saveWorkflow({ name: name, workflow: ws_1.unified(d), config: {},
       toolsExecuted: ws_1.activeToolIndexes(d), layout: d.pos });
     dom_1.flash("Saved to database: " + name + (r && r.versionNumber ? " (v" + r.versionNumber + ")" : ""));
@@ -422,11 +464,11 @@ exports.init = function (ctx) {
 exports.currentUser = function () { return currentUser; };
 exports.hasAccess = hasAccess;
 exports.isGuest = isGuest;
+exports.isSuperuser = isSuperuser;
 exports.enterGuest = enterGuest;
 exports.PData = PData;
 exports.dataProblem = dataProblem;
 exports.authVal = authVal;
-exports.authChecked = authChecked;
 exports.blankProfile = blankProfile;
 exports.profileFromInputs = profileFromInputs;
 exports.broadcastAuthToEditor = broadcastAuthToEditor;

@@ -1,7 +1,7 @@
 /* ============================================================================
  * studio/shared/library.ts — the workflow navigation pane
  * ----------------------------------------------------------------------------
- * The organized Explore Saved sidebar plus the focused Save dialog. Both are
+ * The organized Explorer sidebar plus the focused Save dialog. Both are
  * shared by the Editor and Analysis Studio and overlay whichever screen is
  * showing.
  *
@@ -25,10 +25,10 @@
  *   · under the same name or a new one
  *   · each with a description
  *
- * SAMPLES (migration 004)
- *   Read-only for everyone but a superuser. The panel offers "Copy to my
- *   workflows" instead of Save, so a sample is a starting point rather than a
- *   dead end.
+ * EXAMPLES
+ *   The legacy database SAMPLE rows are not shown. The editable local example
+ *   catalog is the single examples experience and supports the same rename,
+ *   move, duplicate, and delete interactions as ordinary workflows.
  * ==========================================================================*/
 __PL.define("studio/shared/library.ts", function (require, exports, module) {
 "use strict";
@@ -42,7 +42,6 @@ var MODE    = "editor";     /* where a loaded workflow is delivered */
 var groups  = [];           /* folder rows */
 var items   = [];           /* workflow rows, with visibility + isMine */
 var open    = {};           /* groupId -> expanded */
-open.__unfiled = true;
 var exampleOpen = {};       /* built-in category id -> expanded */
 var pick    = null;         /* { kind: 'workflow'|'group'|'example', id } */
 var filter  = "";
@@ -55,6 +54,11 @@ var editingCollectionId = null;
 var pendingConfirmation = null;
 var exampleCollections = [];
 var exampleStateScope = null;
+var selectedIds = new Set(); /* workflow/example ids selected in Explorer */
+var selectedKind = null;     /* keep a batch homogeneous so its actions are clear */
+var selectionAnchor = null;
+var folderOrder = [];        /* account-backed sibling order for database folders */
+var exampleUndoState = null; /* last bulk-removed editable example catalog */
 
 var $ = function (id) { return document.getElementById(id); };
 
@@ -178,11 +182,56 @@ function loadExampleState(force) {
   exampleCollections.forEach(function (collection) {
     if (exampleOpen[collection.id] === undefined) exampleOpen[collection.id] = true;
   });
+  loadExampleUndoState();
 }
 
 function persistExampleState() {
   try { localStorage.setItem(exampleStorageKey(exampleStateScope), JSON.stringify(exampleCollections)); }
   catch (e) { status("The example change is active for this session but could not be saved locally.", true); }
+}
+
+function exampleUndoKey(scope) {
+  return "plumbline.example-library.undo.v1." + encodeURIComponent(scope || exampleScope());
+}
+
+function loadExampleUndoState() {
+  var stored = null;
+  try { stored = JSON.parse(localStorage.getItem(exampleUndoKey(exampleStateScope)) || "null"); }
+  catch (e) { stored = null; }
+  exampleUndoState = validExampleCollections(stored) && stored.length ? stored : null;
+}
+
+function paintExampleUndoActions() {
+  var total = exampleCollections.reduce(function (sum, collection) { return sum + collection.examples.length; }, 0);
+  var remove = $("libRemoveExamples"), undo = $("libUndoExamples");
+  if (remove) remove.disabled = total === 0;
+  if (undo) undo.disabled = !exampleUndoState;
+}
+
+function removeAllExamples() {
+  var total = exampleCollections.reduce(function (sum, collection) { return sum + collection.examples.length; }, 0);
+  if (!total) return;
+  exampleUndoState = cloneExamples(exampleCollections);
+  try { localStorage.setItem(exampleUndoKey(exampleStateScope), JSON.stringify(exampleUndoState)); } catch (e) {}
+  exampleCollections = [];
+  exampleOpen = {};
+  if (selectedKind === "example") clearSelection(false);
+  if (pick && pick.kind === "example") pick = null;
+  persistExampleState();
+  status(total + " examples removed. Undo remains available until the next bulk removal.");
+  render();
+}
+
+function undoRemoveAllExamples() {
+  if (!exampleUndoState) loadExampleUndoState();
+  if (!exampleUndoState) { status("There is no removed example set to restore.", true); return; }
+  exampleCollections = cloneExamples(exampleUndoState);
+  exampleCollections.forEach(function (collection) { exampleOpen[collection.id] = true; });
+  exampleUndoState = null;
+  try { localStorage.removeItem(exampleUndoKey(exampleStateScope)); } catch (e) {}
+  persistExampleState();
+  status("Examples restored.");
+  render();
 }
 
 loadExampleState(true);
@@ -222,18 +271,21 @@ function api() {
 function refresh() {
   return Promise.all([
     api().listGroups().catch(function () { return []; }),
-    api().listWorkflows().catch(function () { return []; })
+    api().listWorkflows().catch(function () { return []; }),
+    isGuest() ? Promise.resolve({}) : api().getSettings().catch(function () { return {}; })
   ]).then(function (r) {
     groups = Array.isArray(r[0]) ? r[0] : [];
     items  = Array.isArray(r[1]) ? r[1] : [];
+    groups.forEach(function (g, i) { g._listIndex = i; });
     items.forEach(function (w, i) { w._listIndex = i; });
+    var accountOrder = r[2] && Array.isArray(r[2].explorerFolderOrder) ? r[2].explorerFolderOrder : [];
+    folderOrder = accountOrder.length ? accountOrder.map(String) : loadLocalFolderOrder();
     render();
   });
 }
 exports.refresh = refresh;
 
 function mine()    { return items.filter(function (w) { return w.isMine !== false && w.visibility !== "SAMPLE"; }); }
-function samples() { return items.filter(function (w) { return w.visibility === "SAMPLE"; }); }
 function isGuest() { return !!(CTX && CTX.auth && CTX.auth.isGuest && CTX.auth.isGuest()); }
 function ordered(list) {
   return list.slice().sort(function (a, b) {
@@ -241,6 +293,46 @@ function ordered(list) {
     var bp = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : ((b._listIndex || 0) + 1) * 100;
     return ap - bp || String(a.name || "").localeCompare(String(b.name || ""));
   });
+}
+
+function folderOrderKey() {
+  return "plumbline.explorer.folder-order.v1." + encodeURIComponent(exampleScope());
+}
+
+function loadLocalFolderOrder() {
+  try {
+    var stored = JSON.parse(localStorage.getItem(folderOrderKey()) || "[]");
+    return Array.isArray(stored) ? stored.map(String) : [];
+  } catch (e) { return []; }
+}
+
+function completeFolderOrder() {
+  var known = new Set(groups.map(function (g) { return String(g.groupId); }));
+  var next = [], seen = new Set();
+  folderOrder.forEach(function (id) {
+    id = String(id);
+    if (known.has(id) && !seen.has(id)) { seen.add(id); next.push(id); }
+  });
+  groups.forEach(function (g) {
+    var id = String(g.groupId);
+    if (!seen.has(id)) { seen.add(id); next.push(id); }
+  });
+  return next;
+}
+
+function orderedGroups(list) {
+  var rank = new Map(completeFolderOrder().map(function (id, index) { return [id, index]; }));
+  return list.slice().sort(function (a, b) {
+    var ar = rank.has(String(a.groupId)) ? rank.get(String(a.groupId)) : Number.MAX_SAFE_INTEGER;
+    var br = rank.has(String(b.groupId)) ? rank.get(String(b.groupId)) : Number.MAX_SAFE_INTEGER;
+    return ar - br || String(a.name || "").localeCompare(String(b.name || ""));
+  });
+}
+
+function persistFolderOrder() {
+  folderOrder = completeFolderOrder();
+  try { localStorage.setItem(folderOrderKey(), JSON.stringify(folderOrder)); } catch (e) {}
+  return api().updateSettings({ explorerFolderOrder: folderOrder });
 }
 
 function closeConfirmation() {
@@ -271,16 +363,29 @@ function matches(text) {
 /* ---------------------------------------------------------------------------
  * rendering
  * -------------------------------------------------------------------------*/
+function explorerIcon(kind) {
+  var paths = {
+    folder: '<path d="M3.5 6.5h6l2 2h9v10h-17z"></path>',
+    workflow: '<path d="M7 3.5h8l4 4v13H7z"></path><path d="M15 3.5v4h4M10 12h6m-6 4h6"></path>',
+    example: '<path d="M7 3.5h8l4 4v13H7z"></path><path d="M15 3.5v4h4M10 12h6m-6 4h6"></path><path d="m4.5 14 1 1 2-2"></path>'
+  };
+  return '<svg viewBox="0 0 24 24" aria-hidden="true">' + (paths[kind] || paths.workflow) + '</svg>';
+}
+
 function row(opts) {
   var el = document.createElement("div");
-  el.className = "libRow" + (opts.sel ? " sel" : "") + (opts.dim ? " dim" : "");
+  el.className = "libRow" + (opts.kind === "folder" ? " libFolderRow" : " libFileRow") +
+    (opts.sel ? " sel" : "") + (opts.dim ? " dim" : "");
+  el.tabIndex = 0;
+  el.setAttribute("role", "treeitem");
   var tw = document.createElement("span");
   tw.className = "twist";
   tw.textContent = opts.twist || "";
   el.appendChild(tw);
   var ic = document.createElement("span");
   ic.className = "ico";
-  ic.textContent = opts.icon || "";
+  if (opts.iconKind) ic.innerHTML = explorerIcon(opts.iconKind);
+  else ic.textContent = opts.icon || "";
   el.appendChild(ic);
   var nm = document.createElement("span");
   nm.className = "nm";
@@ -292,12 +397,78 @@ function row(opts) {
     v.textContent = opts.note;
     el.appendChild(v);
   }
-  if (opts.onClick) el.addEventListener("click", opts.onClick);
+  if (opts.onClick) {
+    el.addEventListener("click", opts.onClick);
+    el.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      opts.onClick(event);
+    });
+  }
   return el;
+}
+
+function clearSelection(shouldRender) {
+  selectedIds.clear();
+  selectedKind = null;
+  selectionAnchor = null;
+  pick = null;
+  if (shouldRender !== false) render();
+}
+
+function selectableKey(kind, id) { return kind + ":" + id; }
+
+function selectItem(kind, id, name, extra, event) {
+  var key = selectableKey(kind, id);
+  var additive = !!(event && (event.ctrlKey || event.metaKey));
+  var range = !!(event && event.shiftKey);
+  if (selectedKind !== kind) {
+    selectedIds.clear();
+    selectedKind = kind;
+    selectionAnchor = null;
+  }
+  if (range && selectionAnchor) {
+    var visible = Array.prototype.slice.call(document.querySelectorAll('.libRow[data-select-kind="' + kind + '"]'));
+    var from = visible.findIndex(function (node) { return node.dataset.selectKey === selectionAnchor; });
+    var to = visible.findIndex(function (node) { return node.dataset.selectKey === key; });
+    if (from >= 0 && to >= 0) {
+      if (!additive) selectedIds.clear();
+      visible.slice(Math.min(from, to), Math.max(from, to) + 1).forEach(function (node) {
+        selectedIds.add(node.dataset.selectId);
+      });
+    } else selectedIds.add(id);
+  } else if (additive) {
+    if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+    selectionAnchor = key;
+  } else {
+    selectedIds.clear();
+    selectedIds.add(id);
+    selectionAnchor = key;
+  }
+  if (!selectedIds.size) {
+    selectedKind = null;
+    selectionAnchor = null;
+    pick = null;
+  } else if (selectedIds.size === 1) {
+    var only = Array.from(selectedIds)[0];
+    pick = Object.assign({ kind: kind, id: only, name: only }, only === id ? (extra || { name: name }) : {});
+  } else {
+    pick = { kind: "multi", selectionKind: kind };
+  }
+  render();
+}
+
+function markSelectable(el, kind, id) {
+  el.dataset.selectKind = kind;
+  el.dataset.selectId = id;
+  el.dataset.selectKey = selectableKey(kind, id);
+  el.setAttribute("aria-selected", selectedKind === kind && selectedIds.has(id) ? "true" : "false");
 }
 
 function iconSvg(kind) {
   var paths = {
+    open: '<path d="M3.5 7h6l2 2h9l-2 10h-15z"></path><path d="m13 13 2 2 4-4"></path>',
+    folder: '<path d="M3.5 6.5h6l2 2h9v10h-17z"></path><path d="M12 11v5m-2.5-2.5h5"></path>',
     edit: '<path d="M4 20h4l11-11a2.8 2.8 0 0 0-4-4L4 16v4Z"></path><path d="m13.5 6.5 4 4"></path>',
     copy: '<rect x="8" y="3" width="13" height="16" rx="3"></rect><path d="M16 21H6a3 3 0 0 1-3-3V8"></path>',
     trash: '<path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7m4 4v6m4-6v6"></path>'
@@ -320,22 +491,88 @@ function iconButton(kind, label, fn) {
   return b;
 }
 
+function hideContextMenu() {
+  var menu = $("libContextMenu");
+  if (!menu) return;
+  menu.hidden = true;
+  menu.innerHTML = "";
+}
+
+function showContextMenu(event, actions) {
+  var menu = $("libContextMenu");
+  if (!menu || !Array.isArray(actions) || !actions.length) return;
+  event.preventDefault();
+  event.stopPropagation();
+  menu.innerHTML = "";
+  actions.forEach(function (action) {
+    if (action.separator) {
+      var separator = document.createElement("div");
+      separator.className = "libContextSeparator";
+      separator.setAttribute("role", "separator");
+      menu.appendChild(separator);
+      return;
+    }
+    var button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "menuitem");
+    if (action.danger) button.className = "danger";
+    button.innerHTML = iconSvg(action.icon || "edit") + "<span></span>";
+    button.querySelector("span").textContent = action.label;
+    button.addEventListener("click", function () {
+      hideContextMenu();
+      action.run();
+    });
+    menu.appendChild(button);
+  });
+  menu.style.left = Math.max(8, event.clientX) + "px";
+  menu.style.top = Math.max(8, event.clientY) + "px";
+  menu.hidden = false;
+  var rect = menu.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(event.clientX, window.innerWidth - rect.width - 8)) + "px";
+  menu.style.top = Math.max(8, Math.min(event.clientY, window.innerHeight - rect.height - 8)) + "px";
+  var first = menu.querySelector("button");
+  if (first) first.focus();
+}
+
+function attachContextMenu(el, actionFactory) {
+  if (!el) return;
+  el.addEventListener("contextmenu", function (event) {
+    var actions = typeof actionFactory === "function" ? actionFactory() : actionFactory;
+    showContextMenu(event, actions || []);
+  });
+}
+
 function clearDragMarks() {
-  document.querySelectorAll(".libDragging,.libDragBefore,.libDropFolder").forEach(function (n) {
-    n.classList.remove("libDragging", "libDragBefore", "libDropFolder");
+  document.querySelectorAll(".libDragging,.libDragBefore,.libDragAfter,.libDropFolder").forEach(function (n) {
+    n.classList.remove("libDragging", "libDragBefore", "libDragAfter", "libDropFolder");
   });
 }
 
 function makeFolderDropTarget(el, groupId) {
   if (isGuest() || filter) return;
   el.addEventListener("dragover", function (e) {
-    if (!draggingId || draggingKind !== "workflow") return;
+    if (!draggingId) return;
+    if (draggingKind === "folder" && !groupId) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      clearDragMarks(); el.classList.add("libDropFolder");
+      return;
+    }
+    if (draggingKind !== "workflow") return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
     clearDragMarks(); el.classList.add("libDropFolder");
   });
   el.addEventListener("drop", function (e) {
-    if (!draggingId || draggingKind !== "workflow") return;
+    if (!draggingId) return;
+    if (draggingKind === "folder" && !groupId) {
+      e.preventDefault(); e.stopPropagation();
+      var folderId = draggingId;
+      draggingId = null; draggingKind = null; clearDragMarks();
+      moveFolder(folderId, null, null, false);
+      return;
+    }
+    if (draggingKind !== "workflow") return;
     e.preventDefault(); e.stopPropagation();
     var id = draggingId;
     draggingId = null; draggingKind = null; clearDragMarks();
@@ -343,15 +580,62 @@ function makeFolderDropTarget(el, groupId) {
   });
 }
 
+function invalidFolderDrop(movingId, targetId) {
+  return !movingId || !targetId || movingId === targetId || descendantGroupIds(movingId).has(targetId);
+}
+
+function folderDropPlacement(event, element) {
+  var rect = element.getBoundingClientRect();
+  var ratio = rect.height ? (event.clientY - rect.top) / rect.height : .5;
+  return ratio < .28 ? "before" : (ratio > .72 ? "after" : "inside");
+}
+
+function makeFolderDraggable(el, group) {
+  if (isGuest() || filter || !el || !group) return;
+  el.draggable = true;
+  el.classList.add("libFolderDraggable");
+  el.title = "Drag above or below a folder to reorder, or onto its center to nest";
+  el.addEventListener("dragstart", function (event) {
+    draggingId = group.groupId;
+    draggingKind = "folder";
+    el.classList.add("libDragging");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", group.groupId);
+    }
+  });
+  el.addEventListener("dragend", function () {
+    draggingId = null; draggingKind = null; clearDragMarks();
+  });
+  el.addEventListener("dragover", function (event) {
+    if (draggingKind !== "folder" || invalidFolderDrop(draggingId, group.groupId)) return;
+    event.preventDefault(); event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    var placement = folderDropPlacement(event, el);
+    clearDragMarks();
+    el.classList.add(placement === "inside" ? "libDropFolder" : (placement === "after" ? "libDragAfter" : "libDragBefore"));
+  });
+  el.addEventListener("drop", function (event) {
+    if (draggingKind !== "folder" || invalidFolderDrop(draggingId, group.groupId)) return;
+    event.preventDefault(); event.stopPropagation();
+    var movingId = draggingId;
+    var placement = folderDropPlacement(event, el);
+    draggingId = null; draggingKind = null; clearDragMarks();
+    if (placement === "inside") moveFolder(movingId, group.groupId, null, false);
+    else moveFolder(movingId, group.parentGroupId || null, group.groupId, placement === "after");
+  });
+}
+
 function makeWorkflowDraggable(el, w) {
   if (isGuest() || filter || w.isMine === false || w.visibility === "SAMPLE") return;
   el.draggable = true;
   el.title = "Hold and drag to move or reorder";
-  var grip = document.createElement("span");
-  grip.className = "libDrag";
-  grip.textContent = "\u2807";
-  grip.setAttribute("aria-hidden", "true");
-  el.insertBefore(grip, el.children[1]);
+  var grip = el.querySelector(".twist");
+  if (grip) {
+    grip.classList.add("libDrag");
+    grip.textContent = "\u28ff";
+    grip.setAttribute("aria-hidden", "true");
+  }
   el.addEventListener("dragstart", function (e) {
     draggingId = w.id;
     draggingKind = "workflow";
@@ -379,7 +663,7 @@ function makeWorkflowDraggable(el, w) {
 
 function renderFolder(g, host, depth) {
   var kids = ordered(mine().filter(function (w) { return w.groupId === g.groupId; }));
-  var subs = groups.filter(function (x) { return x.parentGroupId === g.groupId; });
+  var subs = orderedGroups(groups.filter(function (x) { return x.parentGroupId === g.groupId; }));
   var hit = matches(g.name) ||
             kids.some(function (w) { return matches(w.name); });
   if (!hit) return;
@@ -387,23 +671,34 @@ function renderFolder(g, host, depth) {
   var expanded = open[g.groupId] || !!filter;
   var folderEl = row({
     twist: (kids.length + subs.length) ? (expanded ? "\u25be" : "\u25b8") : "",
-    icon: "\u25a2",
+    iconKind: "folder",
+    kind: "folder",
     label: g.name,
     note: kids.length ? String(kids.length) : "",
     sel: pick && pick.kind === "group" && pick.id === g.groupId,
     onClick: function () {
+      clearSelection(false);
       open[g.groupId] = !expanded;
       pick = { kind: "group", id: g.groupId, name: g.name };
       render();
     }
   });
   makeFolderDropTarget(folderEl, g.groupId);
+  makeFolderDraggable(folderEl, g);
   var folderActions = document.createElement("span");
   folderActions.className = "libRowActions";
   folderActions.appendChild(iconButton("edit", "Edit properties for folder " + g.name, function () { showEditFolder(g); }));
   folderActions.appendChild(iconButton("copy", "Duplicate folder " + g.name, function () { duplicateFolder(g); }));
   folderActions.appendChild(iconButton("trash", "Delete folder " + g.name, function () { deleteFolder(g); }));
   folderEl.appendChild(folderActions);
+  attachContextMenu(folderEl, function () { return [
+    { icon: "open", label: "Open folder", run: function () { openFolder(g.groupId); } },
+    { icon: "folder", label: "New subfolder", run: function () { showCreateFolder(g.groupId); } },
+    { separator: true },
+    { icon: "edit", label: "Properties", run: function () { showEditFolder(g); } },
+    { icon: "copy", label: "Duplicate folder", run: function () { duplicateFolder(g); } },
+    { icon: "trash", label: "Delete folder", danger: true, run: function () { deleteFolder(g); } }
+  ]; });
   host.appendChild(folderEl);
   if (!expanded) return;
 
@@ -416,17 +711,24 @@ function renderFolder(g, host, depth) {
 }
 
 function workflowRow(w) {
+  var selectable = w.isMine !== false && w.visibility !== "SAMPLE";
   var el = row({
-    icon: "\u2261",
+    iconKind: "workflow",
+    kind: "workflow",
     label: w.name,
     note: w.versionNumber ? ("v" + w.versionNumber) : "",
-    sel: pick && pick.kind === "workflow" && pick.id === w.id,
-    onClick: function () {
-      pick = { kind: "workflow", id: w.id, name: w.name,
-               sample: w.visibility === "SAMPLE" };
+    sel: selectable ? (selectedKind === "workflow" && selectedIds.has(w.id))
+                    : (pick && pick.kind === "workflow" && pick.id === w.id),
+    onClick: function (event) {
+      if (selectable) return selectItem("workflow", w.id, w.name, {
+        kind: "workflow", id: w.id, name: w.name, sample: false
+      }, event);
+      clearSelection(false);
+      pick = { kind: "workflow", id: w.id, name: w.name, sample: true };
       render();
     }
   });
+  if (selectable) markSelectable(el, "workflow", w.id);
   makeWorkflowDraggable(el, w);
   if (w.isMine !== false && w.visibility !== "SAMPLE") {
     var actions = document.createElement("span");
@@ -436,6 +738,22 @@ function workflowRow(w) {
     actions.appendChild(iconButton("trash", "Delete " + w.name, function () { deleteWorkflow(w); }));
     el.appendChild(actions);
   }
+  attachContextMenu(el, function () {
+    var actions = [
+      { icon: "open", label: selectable ? "Open workflow" : "Open a copy", run: function () { openWorkflow(w.id, !selectable); } }
+    ];
+    if (selectable) actions = actions.concat([
+      { separator: true },
+      { icon: "edit", label: "Properties", run: function () { showEditWorkflow(w); } },
+      { icon: "copy", label: "Duplicate workflow", run: function () { duplicateWorkflow(w); } },
+      { icon: "trash", label: "Delete workflow", danger: true, run: function () { deleteWorkflow(w); } }
+    ]);
+    return actions;
+  });
+  el.addEventListener("dblclick", function (event) {
+    if (event.target && event.target.closest && event.target.closest("button")) return;
+    openWorkflow(w.id, !selectable);
+  });
   return el;
 }
 
@@ -484,11 +802,12 @@ function makeExampleDraggable(el, w, collectionId) {
   if (filter) return;
   el.draggable = true;
   el.title = "Hold and drag to move or reorder";
-  var grip = document.createElement("span");
-  grip.className = "libDrag";
-  grip.textContent = "\u2807";
-  grip.setAttribute("aria-hidden", "true");
-  el.insertBefore(grip, el.children[1]);
+  var grip = el.querySelector(".twist");
+  if (grip) {
+    grip.classList.add("libDrag");
+    grip.textContent = "\u28ff";
+    grip.setAttribute("aria-hidden", "true");
+  }
   el.addEventListener("dragstart", function (e) {
     draggingId = w.id;
     draggingKind = "example";
@@ -518,15 +837,16 @@ function makeExampleDraggable(el, w, collectionId) {
 
 function exampleRow(w, collectionId) {
   var el = row({
-    icon: "\u25c7",
+    iconKind: "example",
+    kind: "workflow",
     label: w.name,
     note: "example",
-    sel: pick && pick.kind === "example" && pick.id === w.id,
-    onClick: function () {
-      pick = { kind: "example", id: w.id, name: w.name };
-      render();
+    sel: selectedKind === "example" && selectedIds.has(w.id),
+    onClick: function (event) {
+      selectItem("example", w.id, w.name, { kind: "example", id: w.id, name: w.name }, event);
     }
   });
+  markSelectable(el, "example", w.id);
   makeExampleDraggable(el, w, collectionId);
   var actions = document.createElement("span");
   actions.className = "libRowActions";
@@ -534,6 +854,17 @@ function exampleRow(w, collectionId) {
   actions.appendChild(iconButton("copy", "Duplicate " + w.name, function () { duplicateExample(w, collectionId); }));
   actions.appendChild(iconButton("trash", "Delete " + w.name, function () { deleteExample(w); }));
   el.appendChild(actions);
+  attachContextMenu(el, function () { return [
+    { icon: "open", label: "Open example", run: function () { openExample(w.id); } },
+    { separator: true },
+    { icon: "edit", label: "Properties", run: function () { showEditExample(w, collectionId); } },
+    { icon: "copy", label: "Duplicate example", run: function () { duplicateExample(w, collectionId); } },
+    { icon: "trash", label: "Delete example", danger: true, run: function () { deleteExample(w); } }
+  ]; });
+  el.addEventListener("dblclick", function (event) {
+    if (event.target && event.target.closest && event.target.closest("button")) return;
+    openExample(w.id);
+  });
   return el;
 }
 
@@ -545,10 +876,12 @@ function renderExampleCollection(collection, host) {
   var expanded = exampleOpen[collection.id] || !!filter;
   var collectionRow = row({
     twist: expanded ? "\u25be" : "\u25b8",
-    icon: "\u25a6",
+    iconKind: "folder",
+    kind: "folder",
     label: collection.name,
     note: String(visible.length),
     onClick: function () {
+      clearSelection(false);
       exampleOpen[collection.id] = !expanded;
       render();
     }
@@ -560,6 +893,11 @@ function renderExampleCollection(collection, host) {
   collectionActions.appendChild(iconButton("copy", "Duplicate folder " + collection.name, function () { duplicateExampleCollection(collection); }));
   collectionActions.appendChild(iconButton("trash", "Delete folder " + collection.name, function () { deleteExampleCollection(collection); }));
   collectionRow.appendChild(collectionActions);
+  attachContextMenu(collectionRow, function () { return [
+    { icon: "edit", label: "Properties", run: function () { showEditExampleCollection(collection); } },
+    { icon: "copy", label: "Duplicate folder", run: function () { duplicateExampleCollection(collection); } },
+    { icon: "trash", label: "Delete folder", danger: true, run: function () { deleteExampleCollection(collection); } }
+  ]; });
   host.appendChild(collectionRow);
   if (!expanded) return;
   var box = document.createElement("div");
@@ -568,9 +906,10 @@ function renderExampleCollection(collection, host) {
   host.appendChild(box);
 }
 
-function section(host, title, note) {
+function section(host, title, note, key) {
   var h = document.createElement("div");
   h.className = "libSection";
+  if (key) h.dataset.librarySection = key;
   h.textContent = title;
   if (note) {
     var s = document.createElement("span");
@@ -578,6 +917,29 @@ function section(host, title, note) {
     h.appendChild(s);
   }
   host.appendChild(h);
+  return h;
+}
+
+function paintPlaces() {
+  var mineCount = mine().length;
+  var exampleCount = exampleCollections.reduce(function (sum, collection) {
+    return sum + collection.examples.length;
+  }, 0);
+  if ($("libMineCount")) $("libMineCount").textContent = String(mineCount);
+  if ($("libExampleCount")) $("libExampleCount").textContent = String(exampleCount);
+  var minePlace = $("libPlaceWorkflows");
+  if (minePlace) minePlace.hidden = isGuest();
+  paintExampleUndoActions();
+}
+
+function jumpToSection(key) {
+  var tree = $("libTree");
+  var target = tree && tree.querySelector('[data-library-section="' + key + '"]');
+  if (target && target.scrollIntoView) target.scrollIntoView({ block: "start", behavior: "smooth" });
+  ["workflows", "examples"].forEach(function (place) {
+    var button = $("libPlace" + place.charAt(0).toUpperCase() + place.slice(1));
+    if (button) button.classList.toggle("on", place === key);
+  });
 }
 
 function render() {
@@ -585,35 +947,22 @@ function render() {
   if (!tree) return;
   tree.innerHTML = "";
 
-  var roots = groups.filter(function (g) { return !g.parentGroupId; });
+  var roots = orderedGroups(groups.filter(function (g) { return !g.parentGroupId; }));
   var loose = ordered(mine().filter(function (w) { return !w.groupId && matches(w.name); }));
-  var samp  = samples().filter(function (w) { return matches(w.name); });
 
   if (!isGuest() && (roots.length || loose.length || (!filter && mine().length === 0))) {
-    section(tree, "My workflows");
+    var mineSection = section(tree, "My workflows", loose.length ? "Root files " + loose.length : "Root", "workflows");
+    makeFolderDropTarget(mineSection, null);
+    attachContextMenu(mineSection, [
+      { icon: "folder", label: "New folder", run: function () { showCreateFolder(null); } }
+    ]);
     roots.forEach(function (g) { renderFolder(g, tree, 0); });
-    if (!filter || loose.length) {
-      var unfiledExpanded = open.__unfiled || !!filter;
-      var unfiled = row({
-        twist: loose.length ? (unfiledExpanded ? "\u25be" : "\u25b8") : "",
-        icon: "\u25a2", label: "Unfiled", note: loose.length ? String(loose.length) : "drop here",
-        onClick: function () { open.__unfiled = !unfiledExpanded; render(); }
-      });
-      makeFolderDropTarget(unfiled, null);
-      tree.appendChild(unfiled);
-      if (unfiledExpanded && loose.length) {
-        var looseBox = document.createElement("div");
-        looseBox.className = "libKids";
-        loose.forEach(function (w) { looseBox.appendChild(workflowRow(w)); });
-        tree.appendChild(looseBox);
-      }
-    }
+    loose.forEach(function (w) { tree.appendChild(workflowRow(w)); });
   }
-  if (samp.length) {
-    section(tree, "Samples", "read-only");
-    samp.forEach(function (w) { tree.appendChild(workflowRow(w)); });
-  }
-  section(tree, "Example workflows", "editable");
+  /* Database SAMPLE rows are legacy read-only records. They are deliberately
+     omitted; the local example catalog below supports rename, move,
+     duplicate, and delete and is the single examples experience. */
+  section(tree, "Examples", "Editable", "examples");
   exampleCollections.forEach(function (collection) {
     renderExampleCollection(collection, tree);
   });
@@ -624,6 +973,7 @@ function render() {
                            : "No saved workflows yet.";
     tree.appendChild(e);
   }
+  paintPlaces();
   paintActions();
 }
 
@@ -633,7 +983,10 @@ function paintActions() {
   var openBtn = $("libOpen");
   var lbl = "Open";
   var can = !!pick;
-  if (pick && pick.kind === "group") {
+  if (pick && pick.kind === "multi") {
+    lbl = "Open selected (" + selectedIds.size + ")";
+    can = selectedIds.size > 1;
+  } else if (pick && pick.kind === "group") {
     var n = mine().filter(function (w) { return w.groupId === pick.id; }).length;
     lbl = n ? ("Open folder (" + n + ")") : "Folder is empty";
     can = n > 0;
@@ -646,7 +999,46 @@ function paintActions() {
     openBtn.textContent = lbl;
     openBtn.disabled = !can || busy;
   }
+  paintBatchActions();
+}
 
+function fillBatchTarget() {
+  var select = $("libBatchTarget");
+  if (!select) return;
+  var previous = select.value;
+  select.innerHTML = "";
+  if (selectedKind === "example") {
+    exampleCollections.forEach(function (collection) {
+      var option = document.createElement("option");
+      option.value = collection.id; option.textContent = collection.name;
+      select.appendChild(option);
+    });
+  } else {
+    var root = document.createElement("option");
+    root.value = ""; root.textContent = "My workflows (root)";
+    select.appendChild(root);
+    groups.forEach(function (group) {
+      var option = document.createElement("option");
+      option.value = group.groupId;
+      option.textContent = Array(Math.max(0, Number(group.depth) || 0) + 1).join("\u00a0\u00a0") + group.name;
+      select.appendChild(option);
+    });
+  }
+  if (Array.prototype.some.call(select.options, function (option) { return option.value === previous; })) select.value = previous;
+}
+
+function paintBatchActions() {
+  var batch = $("libBatch");
+  if (!batch) return;
+  var count = selectedIds.size;
+  var noun = selectedKind === "example" ? "example" : "workflow";
+  batch.hidden = count < 2;
+  if ($("libBatchCount")) $("libBatchCount").textContent = count + " " + noun + (count === 1 ? "" : "s") + " selected";
+  if ($("libBatchTarget")) $("libBatchTarget").setAttribute("aria-label", "Move selected " + noun + "s to folder");
+  if (count >= 2) fillBatchTarget();
+  ["libBatchOpen", "libBatchMove", "libBatchDuplicate", "libBatchDelete"].forEach(function (id) {
+    if ($(id)) $(id).disabled = busy || count < 2;
+  });
 }
 
 /* ---------------------------------------------------------------------------
@@ -677,8 +1069,14 @@ function openWorkflow(id, asCopy) {
     if (!rec) throw new Error("not found");
     appendDoc(rec.workflow);
     var d = ws_1.D();
-    if (d) d.name = asCopy ? ((rec.name || "Workflow") + " (copy)")
-                           : (rec.name || d.name);
+    if (d) {
+      d.name = asCopy ? ((rec.name || "Workflow") + " (copy)") : (rec.name || d.name);
+      if (!asCopy) {
+        d.sourceWorkflowId = rec.id || id;
+        d.sourceWorkflowCreatedAt = rec.createdAt || null;
+        d.sourceWorkflowVersionId = rec.versionId || null;
+      }
+    }
     deliver();
     status("");
     close();
@@ -696,7 +1094,12 @@ function openFolder(groupId) {
     rows.forEach(function (r) {
       appendDoc(r.workflow, r.name || "Library");
       var d = ws_1.D();
-      if (d && r.name) d.name = r.name;
+      if (d) {
+        if (r.name) d.name = r.name;
+        d.sourceWorkflowId = r.id;
+        d.sourceWorkflowCreatedAt = r.createdAt || null;
+        d.sourceWorkflowVersionId = r.versionId || null;
+      }
     });
     deliver();
     status("");
@@ -718,7 +1121,7 @@ function openExample(id) {
       d.name = rec.name;
       /* The Editor bridge derives this exact id when it echoes the example
          back. Matching it prevents that harmless echo from becoming a second
-         tab when Explore Saved is opened again. */
+         tab when Explorer is opened again. */
       d.id = "editor_" + rec.document.workflow.id;
     }
     deliver();
@@ -729,6 +1132,60 @@ function openExample(id) {
   } finally {
     busy = false; paintActions();
   }
+}
+
+/* Open every selected record into the shared workspace. The Editor and
+ * Analysis tab strips both render workspace.docs[], so the same complete set
+ * stays available when the user changes screens. */
+function openSelected() {
+  if (busy || selectedIds.size < 2) return;
+  var records = selectedRecords();
+  if (!records.length) return;
+  busy = true; paintActions();
+  status("Opening " + records.length + " selected workflows\u2026");
+
+  if (selectedKind === "example") {
+    try {
+      records.forEach(function (rec) {
+        appendDoc(rec.document, rec.name);
+        var d = ws_1.D();
+        if (d) {
+          d.name = rec.name;
+          d.id = "editor_" + rec.document.workflow.id;
+        }
+      });
+      deliver();
+      clearSelection(false);
+      status("");
+      close();
+    } catch (e) {
+      status("Could not open the selected examples: " + (e && e.message || e), true);
+    } finally {
+      busy = false; paintActions();
+    }
+    return;
+  }
+
+  Promise.all(records.map(function (record) { return api().loadWorkflow(record.id); }))
+    .then(function (loaded) {
+      loaded.forEach(function (rec, index) {
+        if (!rec) throw new Error("workflow " + (index + 1) + " was not found");
+        appendDoc(rec.workflow, rec.name || records[index].name || "Library");
+        var d = ws_1.D();
+        if (d) {
+          d.name = rec.name || records[index].name || d.name;
+          d.sourceWorkflowId = rec.id || records[index].id;
+          d.sourceWorkflowCreatedAt = rec.createdAt || records[index].createdAt || null;
+          d.sourceWorkflowVersionId = rec.versionId || null;
+        }
+      });
+      deliver();
+      clearSelection(false);
+      status("");
+      close();
+    })["catch"](function (e) {
+      status("Could not open the selected workflows: " + (e && e.message || e), true);
+    })["finally"](function () { busy = false; paintActions(); });
 }
 
 /* ---------------------------------------------------------------------------
@@ -746,7 +1203,11 @@ function hideEditWorkflow() {
   editingKind = null;
   editingCollectionId = null;
   var sheet = $("libEditSheet");
-  if (sheet) sheet.hidden = true;
+  if (sheet) {
+    sheet.hidden = true;
+    sheet.setAttribute("aria-label", "Edit workflow properties");
+  }
+  if ($("libEditSave")) $("libEditSave").textContent = "Save properties";
   setEditMessage("");
 }
 
@@ -769,7 +1230,7 @@ function fillFolderSelect(select, selected, options) {
   options = options || {};
   select.innerHTML = "";
   var none = document.createElement("option");
-  none.value = ""; none.textContent = options.noneLabel || "Unfiled";
+  none.value = ""; none.textContent = options.noneLabel || "My workflows (root)";
   select.appendChild(none);
   groups.forEach(function (g) {
     if (options.exclude && options.exclude.has(g.groupId)) return;
@@ -874,6 +1335,30 @@ function showEditFolder(g) {
   setTimeout(function () { $("libEditName") && $("libEditName").focus(); }, 0);
 }
 
+function showCreateFolder(parentGroupId) {
+  if (isGuest() || busy) return;
+  hideContextMenu();
+  editingId = "__new_folder__";
+  editingKind = "new-folder";
+  editingCollectionId = null;
+  var sheet = $("libEditSheet");
+  if (!sheet) return;
+  if ($("libEditEyebrow")) $("libEditEyebrow").textContent = parentGroupId ? "Nested folder" : "New folder";
+  setFolderFields("Parent folder", true);
+  $("libEditTitle").textContent = parentGroupId ? "Create a subfolder" : "Create a folder";
+  $("libEditName").value = "";
+  $("libEditDesc").value = "";
+  fillFolderSelect($("libEditFolder"), parentGroupId || "", {
+    noneLabel: "My workflows (root)",
+    allowCreate: false
+  });
+  if ($("libEditSave")) $("libEditSave").textContent = "Create folder";
+  setEditMessage(parentGroupId ? "The new folder will be placed inside the selected parent." : "Choose a name and optional parent folder.");
+  sheet.setAttribute("aria-label", "Create folder");
+  sheet.hidden = false;
+  setTimeout(function () { $("libEditName") && $("libEditName").focus(); }, 0);
+}
+
 function showEditExampleCollection(collection) {
   if (!collection || busy) return;
   editingId = collection.id;
@@ -910,7 +1395,27 @@ function resolveAccountFolderSelection() {
 function saveEditedWorkflow() {
   if (!editingId || busy) return;
   var name = ($("libEditName").value || "").trim();
-  if (!name) { setEditMessage("Give the workflow a name.", true); return; }
+  if (!name) { setEditMessage(editingKind === "new-folder" ? "Give the folder a name." : "Give the workflow a name.", true); return; }
+  if (editingKind === "new-folder") {
+    var parentId = $("libEditFolder").value || null;
+    var folderDescription = ($("libEditDesc").value || "").trim();
+    busy = true;
+    $("libEditSave").disabled = true;
+    setEditMessage("Creating folder\u2026");
+    return api().createGroup(name, parentId, folderDescription).then(function (created) {
+      if (parentId) open[parentId] = true;
+      if (created && created.groupId) open[created.groupId] = true;
+      hideEditWorkflow();
+      status(parentId ? "Subfolder created." : "Folder created.");
+      return refresh();
+    })["catch"](function (e) {
+      setEditMessage("Could not create folder: " + (e && e.message || e), true);
+    })["finally"](function () {
+      busy = false;
+      if ($("libEditSave")) $("libEditSave").disabled = false;
+      paintActions();
+    });
+  }
   if (editingKind === "example-folder") {
     var exampleFolder = exampleCollections.find(function (collection) { return collection.id === editingId; });
     if (!exampleFolder) { setEditMessage("That folder is no longer available.", true); return; }
@@ -1179,6 +1684,45 @@ function deleteExampleCollection(collection) {
   });
 }
 
+function moveFolder(id, parentGroupId, anchorId, placeAfter) {
+  var moving = groups.find(function (group) { return group.groupId === id; });
+  var targetParentId = parentGroupId || null;
+  if (!moving || busy) return;
+  if (targetParentId && descendantGroupIds(moving.groupId).has(targetParentId)) {
+    status("A folder cannot be moved into itself or one of its subfolders.", true);
+    return;
+  }
+
+  var siblings = orderedGroups(groups.filter(function (group) {
+    return group.groupId !== moving.groupId && (group.parentGroupId || null) === targetParentId;
+  }));
+  var at = anchorId ? siblings.findIndex(function (group) { return group.groupId === anchorId; }) : siblings.length;
+  if (at < 0) at = siblings.length;
+  if (placeAfter && anchorId) at += 1;
+  siblings.splice(at, 0, moving);
+
+  var siblingIds = siblings.map(function (group) { return String(group.groupId); });
+  var affected = new Set(siblingIds);
+  folderOrder = completeFolderOrder().filter(function (groupId) { return !affected.has(String(groupId)); });
+  Array.prototype.push.apply(folderOrder, siblingIds);
+  moving.parentGroupId = targetParentId;
+  if (targetParentId) open[targetParentId] = true;
+
+  busy = true;
+  render();
+  status("Moving folder…");
+  return api().updateGroup(moving.groupId, { parentGroupId: targetParentId }).then(function () {
+    return persistFolderOrder();
+  }).then(function () {
+    return refresh();
+  }).then(function () {
+    status(targetParentId ? "Folder moved into its new parent." : "Folder moved to My workflows.");
+  })["catch"](function (e) {
+    status("Could not move folder: " + (e && e.message || e), true);
+    return refresh();
+  })["finally"](function () { busy = false; paintActions(); });
+}
+
 function moveWorkflow(id, groupId, beforeId) {
   var moving = mine().find(function (w) { return w.id === id; });
   if (!moving || busy) return;
@@ -1211,6 +1755,142 @@ function moveWorkflow(id, groupId, beforeId) {
     status("Could not move workflow: " + (e && e.message || e), true);
     return refresh();
   })["finally"](function () { busy = false; paintActions(); });
+}
+
+function selectedRecords() {
+  if (selectedKind === "example") {
+    var selectedExamples = [];
+    exampleCollections.forEach(function (collection) {
+      collection.examples.forEach(function (example) {
+        if (selectedIds.has(example.id)) selectedExamples.push(example);
+      });
+    });
+    return selectedExamples;
+  }
+  return ordered(mine().filter(function (workflow) { return selectedIds.has(workflow.id); }));
+}
+
+function batchMove() {
+  if (busy || selectedIds.size < 2) return;
+  var targetId = $("libBatchTarget") ? $("libBatchTarget").value : "";
+  var records = selectedRecords();
+  if (selectedKind === "example") {
+    var destination = exampleCollections.find(function (collection) { return collection.id === targetId; });
+    if (!destination) { status("Choose an Examples folder.", true); return; }
+    var movingIds = new Set(records.map(function (record) { return record.id; }));
+    exampleCollections.forEach(function (collection) {
+      collection.examples = collection.examples.filter(function (example) { return !movingIds.has(example.id); });
+    });
+    Array.prototype.push.apply(destination.examples, records);
+    persistExampleState();
+    status(records.length + " examples moved to " + destination.name + ".");
+    render();
+    return;
+  }
+  var targetGroupId = targetId || null;
+  var maxTargetOrder = mine().reduce(function (highest, workflow) {
+    var workflowGroupId = workflow.groupId || null;
+    if (workflowGroupId !== targetGroupId || selectedIds.has(workflow.id)) return highest;
+    return Math.max(highest, Number(workflow.sortOrder) || 0);
+  }, 0);
+  busy = true; paintActions();
+  status("Moving " + records.length + " workflows…");
+  Promise.all(records.map(function (workflow, index) {
+    workflow.groupId = targetGroupId;
+    return api().updateWorkflow(workflow.id, {
+      groupId: workflow.groupId,
+      sortOrder: maxTargetOrder + ((index + 1) * 100)
+    });
+  })).then(function () {
+    status(records.length + " workflows moved.");
+    clearSelection(false);
+    return refresh();
+  })["catch"](function (e) {
+    status("Could not move the selected workflows: " + (e && e.message || e), true);
+    return refresh();
+  })["finally"](function () { busy = false; paintActions(); });
+}
+
+function batchDuplicate() {
+  if (busy || selectedIds.size < 2) return;
+  var records = selectedRecords();
+  if (selectedKind === "example") {
+    records.forEach(function (example) {
+      var location = findExampleLocation(example.id);
+      if (!location) return;
+      var copy = cloneExamples(example);
+      copy.id = "example_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+      copy.name = duplicateExampleName(example.name);
+      copy.document.workflow.id = copy.id;
+      copy.document.workflow.name = copy.name;
+      location.collection.examples.splice(location.index + 1, 0, copy);
+    });
+    persistExampleState();
+    clearSelection(false);
+    status(records.length + " examples duplicated.");
+    render();
+    return;
+  }
+  var used = new Set(mine().map(function (workflow) { return String(workflow.name || "").toLowerCase(); }));
+  function nextName(name) {
+    var base = (name || "Workflow") + " copy";
+    var candidate = base, n = 2;
+    while (used.has(candidate.toLowerCase())) candidate = base + " " + n++;
+    used.add(candidate.toLowerCase());
+    return candidate;
+  }
+  busy = true; paintActions();
+  status("Duplicating " + records.length + " workflows…");
+  Promise.all(records.map(function (workflow) {
+    return api().loadWorkflow(workflow.id).then(function (record) {
+      if (!record) throw new Error("Could not load " + workflow.name);
+      return api().saveWorkflow({
+        name: nextName(workflow.name),
+        description: workflow.description || "",
+        workflow: record.workflow,
+        config: record.config || {},
+        toolsExecuted: record.toolsExecuted || [],
+        layout: record.layout || {},
+        groupId: workflow.groupId || null
+      });
+    });
+  })).then(function () {
+    clearSelection(false);
+    status(records.length + " workflows duplicated.");
+    return refresh();
+  })["catch"](function (e) {
+    status("Could not duplicate the selected workflows: " + (e && e.message || e), true);
+  })["finally"](function () { busy = false; paintActions(); });
+}
+
+function batchDelete() {
+  if (busy || selectedIds.size < 2) return;
+  var records = selectedRecords();
+  var noun = selectedKind === "example" ? "examples" : "workflows";
+  askConfirmation("Delete selected " + noun + "?", "Delete " + records.length + " selected " + noun + "? This cannot be undone.", function () {
+    if (selectedKind === "example") {
+      var deleting = new Set(records.map(function (record) { return record.id; }));
+      exampleCollections.forEach(function (collection) {
+        collection.examples = collection.examples.filter(function (example) { return !deleting.has(example.id); });
+      });
+      persistExampleState();
+      clearSelection(false);
+      status(records.length + " examples deleted.");
+      render();
+      return;
+    }
+    busy = true; paintActions();
+    status("Deleting " + records.length + " workflows…");
+    Promise.all(records.map(function (workflow) { return api().deleteWorkflow(workflow.id); }))
+      .then(function () {
+        clearSelection(false);
+        status(records.length + " workflows deleted.");
+        return refresh();
+      })["catch"](function (e) {
+        status("Could not delete the selected workflows: " + (e && e.message || e), true);
+        return refresh();
+      })["finally"](function () { busy = false; paintActions(); });
+  });
 }
 
 /* ---------------------------------------------------------------------------
@@ -1280,7 +1960,7 @@ function populateSaveDialog() {
       var option = document.createElement("option");
       var folder = groups.find(function (g) { return g.groupId === w.groupId; });
       option.value = w.id;
-      option.textContent = (folder ? folder.name + " / " : "Unfiled / ") + w.name;
+      option.textContent = (folder ? folder.name + " / " : "My workflows / ") + w.name;
       target.appendChild(option);
     });
   }
@@ -1334,7 +2014,19 @@ exports.openSave = function (opts) {
     if (CTX && CTX.auth && CTX.auth.showAuth) CTX.auth.showAuth(true, "login");
     return Promise.resolve();
   }
-  if (!ws_1.D()) { dom_1.flash("Open a workflow first."); return Promise.resolve(); }
+  var saveDocument = ws_1.D();
+  if (!saveDocument) { dom_1.flash("Open a workflow first."); return Promise.resolve(); }
+  var adminAccess = saveDocument.adminWorkflowAccess ||
+    saveDocument.adminWorkflowEdit || saveDocument.adminWorkflowView;
+  if (adminAccess && adminAccess.mode === "view") {
+    dom_1.flash("This workflow is read-only. Choose Edit from Maintenance to save changes.");
+    return Promise.resolve();
+  }
+  /* Maintenance edit mode targets a specific workflow owned by another user.
+   * Do not offer Save as new / Update existing against the superuser's own
+   * library; append an audited version to the selected owner's workflow. */
+  if (adminAccess && CTX.auth.saveCurrentWorkflow)
+    return Promise.resolve(CTX.auth.saveCurrentWorkflow());
   close();
   var modal = $("workflowSaveModal");
   if (!modal) return Promise.resolve();
@@ -1354,6 +2046,7 @@ exports.openSave = function (opts) {
  * -------------------------------------------------------------------------*/
 function close() {
   hideEditWorkflow();
+  hideContextMenu();
   closeConfirmation();
   var o = $("libraryOverlay");
   if (o) o.style.display = "none";
@@ -1362,7 +2055,14 @@ function close() {
 exports.close = close;
 
 function onKey(e) {
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && String(e.key).toLowerCase() === "n" && !isGuest()) {
+    e.preventDefault();
+    showCreateFolder(pick && pick.kind === "group" ? pick.id : null);
+    return;
+  }
   if (e.key !== "Escape") return;
+  var contextMenu = $("libContextMenu");
+  if (contextMenu && !contextMenu.hidden) { hideContextMenu(); return; }
   var confirmation = $("libraryConfirmModal");
   if (confirmation && confirmation.style.display !== "none") { closeConfirmation(); return; }
   var sheet = $("libEditSheet");
@@ -1373,7 +2073,9 @@ function onKey(e) {
 exports.open = function (opts) {
   MODE = (opts && opts.mode) || "editor";
   loadExampleState(false);
+  loadExampleUndoState();
   pick = null;
+  clearSelection(false);
   hideEditWorkflow();
   var o = $("libraryOverlay");
   if (!o) return Promise.resolve();
@@ -1383,8 +2085,10 @@ exports.open = function (opts) {
   var guest = isGuest();
   var createFolder = $("libNewFolder");
   if (createFolder) createFolder.hidden = guest;
+  if ($("libPlaceWorkflows")) $("libPlaceWorkflows").classList.toggle("on", !guest);
+  if ($("libPlaceExamples")) $("libPlaceExamples").classList.toggle("on", guest);
   var title = document.querySelector(".libTitle");
-  if (title) title.textContent = guest ? "Explore examples" : "Explore saved";
+  if (title) title.textContent = "Explorer";
   return refresh()["catch"](function (e) {
     status("Could not load the library: " + (e && e.message || e), true);
   });
@@ -1406,11 +2110,22 @@ exports.init = function (ctx) {
     if (e.target && e.target.id === "libraryOverlay") close();
   });
   bind("libSearch", "input", function (e) {
+    clearSelection(false);
     filter = String(e.target.value || "").trim().toLowerCase();
     render();
   });
+  bind("libPlaceWorkflows", "click", function () { jumpToSection("workflows"); });
+  bind("libPlaceExamples", "click", function () { jumpToSection("examples"); });
+  bind("libTree", "scroll", hideContextMenu);
+  bind("libTree", "contextmenu", function (event) {
+    if (isGuest() || event.target !== $("libTree")) return;
+    showContextMenu(event, [
+      { icon: "folder", label: "New folder", run: function () { showCreateFolder(null); } }
+    ]);
+  });
   bind("libOpen", "click", function () {
     if (!pick || busy) return;
+    if (pick.kind === "multi") return openSelected();
     if (pick.kind === "group") return openFolder(pick.id);
     if (pick.kind === "example") return openExample(pick.id);
     return openWorkflow(pick.id, !!pick.sample);
@@ -1427,6 +2142,11 @@ exports.init = function (ctx) {
   bind("libraryConfirmModal", "click", function (e) {
     if (e.target && e.target.id === "libraryConfirmModal") closeConfirmation();
   });
+  bind("libBatchClear", "click", function () { clearSelection(true); });
+  bind("libBatchOpen", "click", openSelected);
+  bind("libBatchMove", "click", batchMove);
+  bind("libBatchDuplicate", "click", batchDuplicate);
+  bind("libBatchDelete", "click", batchDelete);
   bind("workflowSaveClose", "click", closeSave);
   bind("workflowSaveCancel", "click", closeSave);
   bind("workflowSaveConfirm", "click", submitSave);
@@ -1436,16 +2156,15 @@ exports.init = function (ctx) {
     n.addEventListener("change", paintSaveMode);
   });
   bind("libNewFolder", "click", function () {
-    var name = window.prompt("Name for the new folder");
-    if (!name) return;
-    busy = true; paintActions();
-    api().createGroup(name.trim(), null)
-      .then(refresh)
-      .then(function () { status("Folder created."); })
-      ["catch"](function (e) { status("Could not create folder: " +
-        (e && e.message || e), true); })
-      ["finally"](function () { busy = false; paintActions(); });
+    showCreateFolder(null);
   });
+  bind("libRemoveExamples", "click", removeAllExamples);
+  bind("libUndoExamples", "click", undoRemoveAllExamples);
+  document.addEventListener("pointerdown", function (event) {
+    var menu = $("libContextMenu");
+    if (menu && !menu.hidden && !menu.contains(event.target)) hideContextMenu();
+  });
+  window.addEventListener("resize", hideContextMenu);
 
   /* The editor iframe asks for this panel by name; the editor document is a
      separate document and cannot reach the module registry. */

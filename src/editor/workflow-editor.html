@@ -226,6 +226,44 @@
       white-space: nowrap;
     }
 
+    .aiEditPanel summary::-webkit-details-marker { display: none; }
+    .aiEditPanel summary::after {
+      content: "›";
+      margin-left: auto;
+      font-size: 18px;
+      line-height: 1;
+      transform: rotate(90deg);
+      transition: transform .18s ease;
+    }
+    .aiEditPanel[open] summary::after { transform: rotate(-90deg); }
+    .aiEditIcon {
+      display: inline-grid;
+      width: 20px;
+      height: 20px;
+      place-items: center;
+      border-radius: 6px;
+      background: #0f766e;
+      color: #fff;
+      font-size: 12px;
+    }
+    .aiEditActions {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .aiEditActions button { white-space: nowrap; }
+    #applyAiEdit {
+      border-color: #0f766e;
+      background: #0f766e;
+      color: #fff;
+    }
+    .aiEditStatus {
+      grid-column: 1 / -1;
+      min-height: 17px;
+      color: #47605d;
+      font-size: 12px;
+    }
+    .aiEditStatus.error { color: #b91c1c; }
     .main {
       min-height: 0;
       height: 100%;
@@ -351,6 +389,7 @@
     .app.editMode .cloudGroup,
     .app.editMode .fileGroup,
     .app.editMode .cloudPanel,
+    .app.editMode .aiEditTrigger,
     .app.editMode .status {
       display: none !important;
     }
@@ -837,8 +876,8 @@
 
     .side {
       min-width: 0;
-      overflow: auto;
-      padding: 18px;
+      overflow: hidden;
+      padding: 0;
       background: #ffffff;
       border-left: 0;
       opacity: 1;
@@ -846,6 +885,97 @@
       visibility: visible;
       transition: opacity .22s ease, transform .32s cubic-bezier(.22, .61, .36, 1), visibility 0s;
     }
+
+    .inspectorTabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 42px;
+      background: #f4f5f7;
+      border-bottom: 1px solid #cfd4dc;
+    }
+
+    .inspectorTab {
+      min-height: 42px;
+      padding: 9px 12px;
+      border: 0;
+      border-right: 1px solid #d8dce3;
+      border-radius: 0;
+      background: #f4f5f7;
+      color: #4b5563;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .inspectorTab:last-child { border-right: 0; }
+    .inspectorTab:hover { background: #ffffff; color: #111827; }
+    .inspectorTab[aria-selected="true"] {
+      position: relative;
+      background: #ffffff;
+      color: #111827;
+    }
+    .inspectorTab[aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      right: 12px;
+      bottom: -1px;
+      left: 12px;
+      height: 3px;
+      background: var(--accent);
+    }
+
+    .inspectorPane {
+      height: calc(100% - 42px);
+      overflow: auto;
+      padding: 18px;
+      background: #ffffff;
+      color: #111827;
+    }
+
+    .inspectorPane[hidden] { display: none; }
+
+    .jsonToolsHeader {
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .jsonToolsHeader h2 { margin: 0 0 6px; font-size: 18px; }
+    .jsonToolsHeader p { margin: 0; }
+    .jsonAction {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 12px;
+      padding: 14px;
+      border: 1px solid #d8dce3;
+      border-radius: 7px;
+      background: #fafafa;
+    }
+    .jsonAction strong { color: #111827; }
+    .jsonAction p { margin: 0; color: #667085; font-size: 12px; }
+    .jsonAction button { justify-self: start; margin-top: 5px; }
+    .jsonDropZone {
+      border-style: dashed;
+      transition: border-color .15s ease, background .15s ease;
+    }
+    .jsonDropZone.dragOver {
+      border-color: var(--accent);
+      background: #eef7f4;
+    }
+    .jsonFormatNote {
+      margin-top: 16px;
+      padding: 10px 12px;
+      border-left: 3px solid var(--accent);
+      background: #f7f8fa;
+      color: #4b5563;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .jsonFileStatus {
+      min-height: 18px;
+      margin: 10px 0 0;
+      color: #475467;
+      font-size: 12px;
+    }
+    .jsonFileStatus.error { color: #b91c1c; }
 
     @media (prefers-reduced-motion: reduce) {
       .main, .side { transition-duration: .01ms !important; }
@@ -961,6 +1091,50 @@
       flex-wrap: wrap;
       gap: 8px;
       margin-top: 6px;
+    }
+
+    .editorActionDock {
+      position: sticky;
+      top: -18px;
+      z-index: 45;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 12px -18px 14px;
+      padding: 10px 18px;
+      border-top: 1px solid #d8dce3;
+      border-bottom: 1px solid #cbd5e1;
+      background: rgba(248, 250, 252, .96);
+      box-shadow: 0 5px 13px rgba(15, 23, 42, .08);
+      backdrop-filter: blur(8px);
+    }
+    .editorActionDockCopy {
+      min-width: 0;
+      display: grid;
+      gap: 1px;
+    }
+    .editorActionDockCopy strong {
+      color: #111827;
+      font-size: 12px;
+    }
+    .editorActionDockCopy span {
+      overflow: hidden;
+      color: #667085;
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .editorActionDockButtons {
+      display: flex;
+      align-items: center;
+      flex: 0 0 auto;
+      gap: 6px;
+    }
+    .editorActionDockButtons button {
+      min-height: 32px;
+      padding: 5px 9px;
+      white-space: nowrap;
     }
 
     .typeTools {
@@ -1450,6 +1624,13 @@
       pointer-events: auto;
     }
     .titleRow { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+    .titleWithInfo { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+    .featureInfo { position: relative; flex: 0 0 auto; margin-top: 1px; }
+    .featureInfo summary { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: #f8fafc; color: var(--accent); font: 800 12px/1 Georgia, serif; cursor: pointer; list-style: none; }
+    .featureInfo summary::-webkit-details-marker { display: none; }
+    .featureInfo summary:hover,.featureInfo summary:focus-visible { border-color: var(--accent); background: #eff6ff; outline: none; }
+    .featureInfoCard { position: absolute; top: 28px; left: 0; z-index: 80; width: min(310px, calc(100vw - 32px)); padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 12px 30px rgba(15,23,42,.16); color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .featureInfoCard strong { display: block; margin-bottom: 3px; color: var(--ink); }
     .userBadge {
       font-size: 12px;
       color: #475467;
@@ -1550,6 +1731,93 @@
     .newProcessActions .createPrimary { border-color: #0f766e; background: #0f766e; color: #fff; }
     @media(max-width:620px) { .newProcessGrid { grid-template-columns: 1fr; } .newProcessField.wide,.newProcessSection { grid-column: 1; } }
 
+    .aiEditTrigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      width: auto;
+      min-height: 28px;
+      align-self: center;
+      padding: 6px 10px;
+      white-space: nowrap;
+      border-color: #0f766e;
+      background: #0f766e;
+      color: #fff;
+      font-weight: 800;
+    }
+    .aiEditTrigger:hover { background: #115e59; }
+    .aiEditOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10020;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, .6);
+      backdrop-filter: blur(5px);
+    }
+    .aiEditOverlay[hidden] { display: none !important; }
+    .aiEditDialog {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      width: min(720px, 96vw);
+      height: min(680px, 90vh);
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+      border-radius: 18px;
+      background: #fff;
+      color: #0f172a;
+      box-shadow: 0 28px 80px rgba(15, 23, 42, .34);
+    }
+    .aiEditHeader {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 20px 22px 14px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .aiEditHeader h2 { margin: 2px 0 5px; font-size: 23px; }
+    .aiEditHeader p { margin: 0; color: #64748b; font-size: 13px; }
+    .aiEditClose { width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: 50%; background: #fff; color: #334155; font-size: 18px; }
+    .aiEditTabs { display: flex; gap: 4px; padding: 10px 22px 0; border-bottom: 1px solid #e2e8f0; }
+    .aiEditTab { margin-bottom: -1px; padding: 8px 12px; border: 1px solid transparent; border-bottom: 0; background: transparent; color: #64748b; }
+    .aiEditTab[aria-selected="true"] { border-color: #e2e8f0; border-radius: 8px 8px 0 0; background: #fff; color: #0f766e; }
+    .aiEditPane { min-height: 0; overflow: auto; padding: 18px 22px 22px; }
+    .aiEditPane[hidden] { display: none !important; }
+    .aiEditRequestLabel { display: grid; gap: 7px; color: #334155; font-size: 12px; font-weight: 800; }
+    .aiEditRequestLabel textarea {
+      width: 100%;
+      min-height: 240px;
+      max-height: 46vh;
+      overflow-y: auto;
+      resize: vertical;
+      border: 1px solid #99cfc7;
+      border-radius: 10px;
+      padding: 12px;
+      background: #fff;
+      color: #172033;
+      font: 14px/1.5 Arial, sans-serif;
+    }
+    .aiEditRequestLabel textarea:focus { outline: 3px solid rgba(15,118,110,.14); border-color: #0f766e; }
+    .aiEditActions { justify-content: flex-end; margin-top: 12px; }
+    .aiEditStatus { margin-top: 10px; }
+    .aiHistoryList { display: grid; gap: 10px; }
+    .aiHistoryEmpty { padding: 32px 16px; text-align: center; color: #64748b; }
+    .aiHistoryItem { display: grid; gap: 8px; padding: 13px; border: 1px solid #dbe3ea; border-radius: 10px; background: #f8fafc; }
+    .aiHistoryTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .aiHistoryInstruction { margin: 0; color: #172033; font-size: 13px; font-weight: 700; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .aiHistoryMeta,.aiHistorySummary { margin: 0; color: #64748b; font-size: 11px; line-height: 1.4; }
+    .aiHistoryButtons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .aiHistoryButtons button { min-height: 28px; }
+    @media(max-width:620px) {
+      .aiEditOverlay { padding: 8px; }
+      .aiEditDialog { width: 100%; height: 96vh; }
+      .aiEditHeader,.aiEditPane { padding-right: 16px; padding-left: 16px; }
+      .aiEditTabs { padding-left: 16px; }
+      .aiEditRequestLabel textarea { min-height: 210px; }
+    }
+
     html[data-theme="dark"] {
       --bg: #0f1722;
       --ink: #e8edf4;
@@ -1585,12 +1853,40 @@
     html[data-theme="dark"] .depList,
     html[data-theme="dark"] .ctxMenu,
     html[data-theme="dark"] .inspectorActionBar { background:#111c29;border-color:var(--line);color:var(--ink) }
+    html[data-theme="dark"] .editorActionDock { background:rgba(17,28,41,.96);border-color:var(--line) }
+    html[data-theme="dark"] .editorActionDockCopy strong { color:var(--ink) }
+    html[data-theme="dark"] .editorActionDockCopy span { color:var(--muted) }
     html[data-theme="dark"] .userBadge { background:#1d2a3a;border-color:var(--line);color:var(--muted) }
     html[data-theme="dark"] .userBadge.signedIn { background:#183b36;color:var(--accent) }
     html[data-theme="dark"] .newProcessDialog { background:#172231;color:var(--ink);border-color:var(--line) }
     html[data-theme="dark"] .newProcessHeader,.newProcessSection { border-color:var(--line) }
     html[data-theme="dark"] .newProcessHeader p,.newProcessField { color:var(--muted) }
     html[data-theme="dark"] .newProcessField input,html[data-theme="dark"] .newProcessField textarea,html[data-theme="dark"] .newProcessField select,html[data-theme="dark"] .newProcessClose { background:#111c29;color:var(--ink);border-color:var(--line) }
+    html[data-theme="dark"] .featureInfo summary { background:#111c29;color:var(--accent);border-color:var(--line) }
+    html[data-theme="dark"] .featureInfoCard { background:#172231;color:var(--muted);border-color:var(--line) }
+    html[data-theme="dark"] .aiEditDialog { background:#172231;color:var(--ink);border-color:var(--line) }
+    html[data-theme="dark"] .aiEditHeader,html[data-theme="dark"] .aiEditTabs { border-color:var(--line) }
+    html[data-theme="dark"] .aiEditHeader p,html[data-theme="dark"] .aiEditRequestLabel,html[data-theme="dark"] .aiHistoryMeta,html[data-theme="dark"] .aiHistorySummary { color:var(--muted) }
+    html[data-theme="dark"] .aiEditClose,html[data-theme="dark"] .aiEditTab[aria-selected="true"],html[data-theme="dark"] .aiEditRequestLabel textarea,html[data-theme="dark"] .aiHistoryItem { background:#111c29;color:var(--ink);border-color:var(--line) }
+    html[data-theme="dark"] .aiHistoryInstruction { color:var(--ink) }
+    html[data-theme="dark"] .aiEditStatus { color:var(--muted) }
+    html[data-theme="dark"] .aiEditStatus.error { color:#fca5a5 }
+    html[data-theme="dark"] .inspectorTabs { background:#111c29;border-color:var(--line) }
+    html[data-theme="dark"] .inspectorTab { background:#111c29;color:var(--muted);border-color:var(--line) }
+    html[data-theme="dark"] .inspectorTab:hover,
+    html[data-theme="dark"] .inspectorTab[aria-selected="true"] { background:#172231;color:var(--ink) }
+    html[data-theme="dark"] .inspectorPane { background:#172231;color:var(--ink) }
+
+    @media (max-width: 720px) {
+      .editorActionDock { align-items:stretch;flex-direction:column }
+      .editorActionDockButtons { width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr)) }
+    }
+    html[data-theme="dark"] .jsonToolsHeader { border-color:var(--line) }
+    html[data-theme="dark"] .jsonAction { background:#111c29;border-color:var(--line) }
+    html[data-theme="dark"] .jsonAction strong { color:var(--ink) }
+    html[data-theme="dark"] .jsonFormatNote { background:#111c29;color:var(--muted) }
+    html[data-theme="dark"] .jsonFileStatus { color:var(--muted) }
+    html[data-theme="dark"] .jsonFileStatus.error { color:#fca5a5 }
 
   </style>
 </head>
@@ -1598,19 +1894,26 @@
   <div class="app">
     <header class="topbar">
       <div class="titleRow">
-        <div class="title">
-          <h1>Workflow Editor</h1>
-          <p id="processDescription">Load a process, then edit categories, named boxes, connectors, and per-box task cost/time. Cost/time here is only for carrying out the task in each box.</p>
+        <div class="titleWithInfo">
+          <div class="title">
+            <h1>Workflow Editor</h1>
+            <p id="processDescription">Load a process, then edit categories, named boxes, connectors, and per-box task cost/time. Cost/time here is only for carrying out the task in each box.</p>
+          </div>
+          <details class="featureInfo">
+            <summary aria-label="About the Workflow Editor" title="About the Workflow Editor">i</summary>
+            <div class="featureInfoCard"><strong>Workflow Editor</strong>Add categories, boxes, connections, dependencies, owners, time, and cost. Create a blank workflow or open a saved one to begin.</div>
+          </details>
         </div>
       </div>
       <div class="toolbarWrap">
         <div class="controls" aria-label="Visualizer controls">
-          <input id="processKey" type="hidden" value="ecommerce_order">
+          <input id="processKey" type="hidden" value="">
           <div class="controlGroup presetGroup" aria-label="Process controls">
             <button id="btnSaveProcess" type="button" title="Save this workflow">Save</button>
-            <button id="btnExploreSaved" type="button" title="Explore saved and example workflows">Explore Saved</button>
+            <button id="btnExploreSaved" type="button" title="Browse saved and example workflows">Explorer</button>
             <select id="exampleSelect" aria-label="Example process" hidden></select>
             <button id="createProcess">Create New</button>
+            <button id="openAiEdit" class="aiEditTrigger" type="button" aria-haspopup="dialog"><span class="aiEditIcon" aria-hidden="true">&#10024;</span>AI Edit</button>
           </div>
           <div class="controlGroup editGroup" aria-label="Edit controls">
             <span class="groupLabel">Edit</span>
@@ -1661,11 +1964,36 @@
         </div>
       </section>
 
-      <div class="sideResizeHandle" id="sideResizeHandle" role="separator" aria-orientation="vertical" aria-label="Resize right viewer" tabindex="0" title="Drag to resize the right viewer. Double-click to reset width."><button id="sideToggle" class="sideToggle" type="button" aria-expanded="true" aria-controls="details" title="Hide the Edit Process panel">&gt;</button></div>
+      <div class="sideResizeHandle" id="sideResizeHandle" role="separator" aria-orientation="vertical" aria-label="Resize right viewer" tabindex="0" title="Drag to resize the right viewer. Double-click to reset width."><button id="sideToggle" class="sideToggle" type="button" aria-expanded="true" aria-controls="inspectorPanel" title="Hide the workflow inspector">&gt;</button></div>
 
-      <aside class="side" id="details">
-        <h2>No process loaded</h2>
-        <p class="muted">Use a sample preset, create a new process, or import JSON.</p>
+      <aside class="side" id="inspectorPanel" aria-label="Workflow inspector">
+        <div class="inspectorTabs" role="tablist" aria-label="Inspector views">
+          <button class="inspectorTab" id="inspectorTabProperties" type="button" role="tab" aria-selected="true" aria-controls="details">Properties</button>
+          <button class="inspectorTab" id="inspectorTabJson" type="button" role="tab" aria-selected="false" aria-controls="jsonTools">Workflow JSON</button>
+        </div>
+        <div class="inspectorPane" id="details" role="tabpanel" aria-labelledby="inspectorTabProperties">
+          <h2>No process loaded</h2>
+          <p class="muted">Create a new workflow, open a saved workflow, or import JSON.</p>
+        </div>
+        <section class="inspectorPane" id="jsonTools" role="tabpanel" aria-labelledby="inspectorTabJson" hidden>
+          <div class="jsonToolsHeader">
+            <h2>Workflow JSON</h2>
+            <p class="muted">Move an entire workflow into or out of Plumbline as a portable JSON file.</p>
+          </div>
+          <div class="jsonAction jsonDropZone" id="jsonDropZone">
+            <strong>Import JSON</strong>
+            <p>Choose a Plumbline workflow JSON file, or drag and drop one here. Importing replaces the workflow currently open in the editor.</p>
+            <button id="importJson" type="button">Choose JSON File</button>
+            <input id="importJsonFile" type="file" accept="application/json,.json" hidden>
+          </div>
+          <div class="jsonAction">
+            <strong>Export JSON</strong>
+            <p>Download the current workflow, including categories, boxes, connections, dependencies, time, and cost data.</p>
+            <button id="exportJson" class="primary" type="button">Save as JSON</button>
+          </div>
+          <div id="jsonFileStatus" class="jsonFileStatus" role="status" aria-live="polite"></div>
+          <div class="jsonFormatNote"><strong>Expected format</strong><br>The file must include a <code>process</code> object plus <code>stages</code>, <code>states</code>, and <code>transitions</code> arrays. Files exported here are ready to import again.</div>
+        </section>
       </aside>
     </main>
   </div>
@@ -1689,6 +2017,32 @@
         <div id="newProcessError" class="newProcessError" hidden></div>
         <div class="newProcessActions"><button id="newProcessCancel" type="button">Cancel</button><button class="createPrimary" type="submit">Create workflow</button></div>
       </form>
+    </section>
+  </div>
+
+  <div id="aiEditOverlay" class="aiEditOverlay" hidden>
+    <section class="aiEditDialog" role="dialog" aria-modal="true" aria-labelledby="aiEditTitle">
+      <header class="aiEditHeader">
+        <div><div class="newProcessEyebrow">Claude-assisted editing</div><h2 id="aiEditTitle">AI Edit</h2><p>Describe the outcome you want. Review the mapped workflow, then save it when ready.</p></div>
+        <button id="aiEditClose" class="aiEditClose" type="button" aria-label="Close AI Edit">&times;</button>
+      </header>
+      <div class="aiEditTabs" role="tablist" aria-label="AI Edit views">
+        <button id="aiEditRequestTab" class="aiEditTab" type="button" role="tab" aria-selected="true" aria-controls="aiEditRequestPane">New edit</button>
+        <button id="aiEditHistoryTab" class="aiEditTab" type="button" role="tab" aria-selected="false" aria-controls="aiEditHistoryPane">Edit history</button>
+      </div>
+      <section id="aiEditRequestPane" class="aiEditPane" role="tabpanel" aria-labelledby="aiEditRequestTab">
+        <label class="aiEditRequestLabel">What should change?
+          <textarea id="aiEditInstruction" maxlength="4000" placeholder="Example: Add a manager approval after the risk review, with approved and rejected paths." aria-label="Describe workflow changes"></textarea>
+        </label>
+        <div class="aiEditActions">
+          <button id="aiUndoEdit" type="button" disabled>Undo AI edit</button>
+          <button id="applyAiEdit" type="button">Apply with AI</button>
+        </div>
+        <div id="aiEditStatus" class="aiEditStatus" role="status" aria-live="polite">AI edits are added to the same undo history as manual changes.</div>
+      </section>
+      <section id="aiEditHistoryPane" class="aiEditPane" role="tabpanel" aria-labelledby="aiEditHistoryTab" hidden>
+        <div id="aiEditHistoryList" class="aiHistoryList"><div class="aiHistoryEmpty">Open this tab to retrieve your prior AI edits.</div></div>
+      </section>
     </section>
   </div>
 
@@ -2439,6 +2793,7 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     function updateUndoRedoButtons() {
       const undoButton = document.getElementById("undoEdit");
       const redoButton = document.getElementById("redoEdit");
+      const aiUndoButton = document.getElementById("aiUndoEdit");
       if (undoButton) {
         undoButton.disabled = undoStack.length === 0;
         undoButton.title = undoStack.length ? `Undo: ${undoStack[undoStack.length - 1].label || "previous edit"}` : "No edits to undo";
@@ -2446,6 +2801,11 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       if (redoButton) {
         redoButton.disabled = redoStack.length === 0;
         redoButton.title = redoStack.length ? `Redo: ${redoStack[redoStack.length - 1].label || "next edit"}` : "No edits to redo";
+      }
+      if (aiUndoButton) {
+        const lastChangeIsAi = undoStack.length > 0 && undoStack[undoStack.length - 1].label === "AI workflow edit";
+        aiUndoButton.disabled = !lastChangeIsAi;
+        aiUndoButton.title = lastChangeIsAi ? "Restore the workflow from before the last AI edit" : "The latest change is not an AI edit";
       }
     }
 
@@ -2552,6 +2912,290 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       const entry = redoStack.pop();
       undoStack.push({ ...makeHistoryEntry(entry.label), label: entry.label });
       restoreHistoryEntry(entry, `Redid ${entry.label || "edit"}.`);
+    }
+
+    function setAiEditStatus(message, isError = false) {
+      const el = document.getElementById("aiEditStatus");
+      if (!el) return;
+      el.textContent = message || "";
+      el.className = isError ? "aiEditStatus error" : "aiEditStatus";
+    }
+
+    const aiEditOverlay = document.getElementById("aiEditOverlay");
+    let aiEditReturnFocus = null;
+    let aiEditHistoryLoaded = false;
+    let aiEditHistoryLoading = false;
+    let aiEditHistoryGeneration = 0;
+
+    function aiDataGateway() {
+      return window.parent && window.parent !== window
+        ? window.parent.PlumblineData
+        : window.PlumblineData;
+    }
+
+    function openAiEditDialog() {
+      aiEditReturnFocus = document.activeElement;
+      aiEditOverlay.hidden = false;
+      document.getElementById("aiEditInstruction").focus();
+    }
+
+    function closeAiEditDialog() {
+      if (aiEditInFlight) return;
+      aiEditOverlay.hidden = true;
+      if (aiEditReturnFocus && typeof aiEditReturnFocus.focus === "function") aiEditReturnFocus.focus();
+    }
+
+    function setAiEditTab(tabName, focus = false) {
+      const showHistory = tabName === "history";
+      const requestTab = document.getElementById("aiEditRequestTab");
+      const historyTab = document.getElementById("aiEditHistoryTab");
+      requestTab.setAttribute("aria-selected", String(!showHistory));
+      historyTab.setAttribute("aria-selected", String(showHistory));
+      requestTab.tabIndex = showHistory ? -1 : 0;
+      historyTab.tabIndex = showHistory ? 0 : -1;
+      document.getElementById("aiEditRequestPane").hidden = showHistory;
+      document.getElementById("aiEditHistoryPane").hidden = !showHistory;
+      if (focus) (showHistory ? historyTab : requestTab).focus();
+      if (showHistory) loadAiEditHistory();
+    }
+
+    function aiHistoryButton(label, action, className = "") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      if (className) button.className = className;
+      button.addEventListener("click", action);
+      return button;
+    }
+
+    function renderAiEditHistory(rows) {
+      const list = document.getElementById("aiEditHistoryList");
+      list.replaceChildren();
+      if (!Array.isArray(rows) || !rows.length) {
+        const empty = document.createElement("div");
+        empty.className = "aiHistoryEmpty";
+        empty.textContent = "No AI edits yet. Your successful edits will appear here.";
+        list.appendChild(empty);
+        return;
+      }
+      rows.forEach(item => {
+        const card = document.createElement("article");
+        card.className = "aiHistoryItem";
+        const top = document.createElement("div");
+        top.className = "aiHistoryTop";
+        const instruction = document.createElement("p");
+        instruction.className = "aiHistoryInstruction";
+        instruction.textContent = item.instruction || "AI workflow edit";
+        const meta = document.createElement("p");
+        meta.className = "aiHistoryMeta";
+        const when = item.createdAt ? new Date(item.createdAt).toLocaleString() : "";
+        meta.textContent = [item.workflowName || "Untitled Workflow", when].filter(Boolean).join(" · ");
+        top.append(instruction, meta);
+        card.appendChild(top);
+        if (item.summary) {
+          const summary = document.createElement("p");
+          summary.className = "aiHistorySummary";
+          summary.textContent = item.summary;
+          card.appendChild(summary);
+        }
+        const counts = document.createElement("p");
+        counts.className = "aiHistoryMeta";
+        counts.textContent = `${Number(item.stateCount) || 0} boxes · ${Number(item.transitionCount) || 0} connections`;
+        card.appendChild(counts);
+        const buttons = document.createElement("div");
+        buttons.className = "aiHistoryButtons";
+        buttons.appendChild(aiHistoryButton("Reuse request", () => {
+          document.getElementById("aiEditInstruction").value = item.instruction || "";
+          setAiEditTab("request");
+          document.getElementById("aiEditInstruction").focus();
+          setAiEditStatus("Prior request loaded. Adjust it or apply it again.");
+        }));
+        buttons.appendChild(aiHistoryButton("Restore result", () => restoreAiEditResult(item.editId), "primary"));
+        card.appendChild(buttons);
+        list.appendChild(card);
+      });
+    }
+
+    async function loadAiEditHistory(force = false) {
+      if (aiEditHistoryLoading || (aiEditHistoryLoaded && !force)) return;
+      const list = document.getElementById("aiEditHistoryList");
+      const generation = aiEditHistoryGeneration;
+      aiEditHistoryLoading = true;
+      list.innerHTML = '<div class="aiHistoryEmpty">Loading your AI edit history…</div>';
+      try {
+        if (aiEditAccountAvailable === false) throw new Error("Sign in to retrieve your AI edit history.");
+        const gateway = aiDataGateway();
+        let rows;
+        if (gateway && typeof gateway.listAiWorkflowEdits === "function") {
+          rows = await gateway.listAiWorkflowEdits(50);
+        } else {
+          const response = await fetch("/api/ai/workflow-edits?limit=50", { credentials: "include" });
+          const body = await response.json().catch(() => null);
+          if (!response.ok) throw new Error(body?.error || "Could not load AI edit history.");
+          rows = body;
+        }
+        if (generation !== aiEditHistoryGeneration) return;
+        aiEditHistoryLoaded = true;
+        renderAiEditHistory(rows);
+      } catch (error) {
+        if (generation !== aiEditHistoryGeneration) return;
+        const empty = document.createElement("div");
+        empty.className = "aiHistoryEmpty";
+        empty.textContent = error?.message || "Could not load AI edit history.";
+        list.replaceChildren(empty);
+      } finally {
+        if (generation === aiEditHistoryGeneration) aiEditHistoryLoading = false;
+      }
+    }
+
+    async function restoreAiEditResult(editId) {
+      if (!editId) return;
+      setAiEditStatus("Retrieving the prior AI result…");
+      try {
+        const gateway = aiDataGateway();
+        let item;
+        if (gateway && typeof gateway.loadAiWorkflowEdit === "function") {
+          item = await gateway.loadAiWorkflowEdit(editId);
+        } else {
+          const response = await fetch("/api/ai/workflow-edits/" + encodeURIComponent(editId), { credentials: "include" });
+          const body = await response.json().catch(() => null);
+          if (!response.ok) throw new Error(body?.error || "Could not retrieve that AI edit.");
+          item = body;
+        }
+        beginUntitledDraft("ai");
+        applyAiWorkflowResult(item?.workflow, "Restored a prior AI edit. Use Undo AI edit to return to the current workflow.");
+        setAiEditTab("request");
+      } catch (error) {
+        setAiEditStatus(error?.message || "Could not restore that AI edit.", true);
+      }
+    }
+
+    function applyAiWorkflowResult(candidate, successMessage) {
+      if (!candidate) throw new Error("The AI edit contains no workflow result.");
+      const edited = validateAiWorkflow(cloneData(candidate));
+      selected = { type: null, key: null };
+      pendingConnectionFrom = null;
+      spacingExpandedApplied = false;
+      currentData = edited;
+      refreshDerivedFields(currentData);
+      document.getElementById("processKey").value = currentData.process.process_key || "";
+      updateAddConnectionButton();
+      render(currentData);
+      commitUndoSnapshot("AI workflow edit");
+      syncCurrentProcessOption(true);
+      scheduleEditorSnapshot("ai-edit");
+      setAiEditStatus(successMessage || "AI changes applied. Use Undo AI edit to restore the previous version.");
+      setStatus("AI workflow edit applied.");
+    }
+
+    function validateAiWorkflow(candidate) {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        throw new Error("The AI returned an invalid workflow.");
+      }
+      if (!candidate.process || typeof candidate.process !== "object") {
+        throw new Error("The AI response is missing the workflow process.");
+      }
+      ["stages", "states", "transitions"].forEach(field => {
+        if (!Array.isArray(candidate[field])) {
+          throw new Error(`The AI response is missing ${field}.`);
+        }
+      });
+      const stageKeys = new Set(candidate.stages.map(stage => String(stage.stage_key || "")));
+      const stateKeys = new Set(candidate.states.map(state => String(state.state_key || "")));
+      if (stageKeys.has("") || stateKeys.has("")) {
+        throw new Error("The AI returned a category or box without an ID.");
+      }
+      if (stageKeys.size !== candidate.stages.length || stateKeys.size !== candidate.states.length) {
+        throw new Error("The AI returned duplicate category or box IDs.");
+      }
+      candidate.states.forEach(state => {
+        if (!stageKeys.has(String(state.stage_key || ""))) {
+          throw new Error(`Box "${state.name || state.state_key}" belongs to a missing category.`);
+        }
+      });
+      candidate.transitions.forEach(transition => {
+        if (!stateKeys.has(String(transition.from_state_key || "")) ||
+            !stateKeys.has(String(transition.to_state_key || ""))) {
+          throw new Error(`Connection "${transition.event_name || transition.transition_key || "unnamed"}" points to a missing box.`);
+        }
+      });
+      return candidate;
+    }
+
+    function beginUntitledDraft(reason = "edit") {
+      if (currentData) return false;
+      currentData = makeBlankProcess("Untitled Workflow", {
+        description: "A blank workflow. Add categories, boxes, and connections to build the flow.",
+        category: "New Category"
+      });
+      selected = { type: null, key: null };
+      pendingConnectionFrom = null;
+      spacingExpandedApplied = false;
+      refreshDerivedFields(currentData);
+      document.getElementById("processKey").value = currentData.process.process_key;
+      updateAddConnectionButton();
+      render(currentData);
+      resetUndoRedoHistory();
+      syncCurrentProcessOption(true);
+      recenterSoon(false);
+      setStatus(reason === "ai"
+        ? "Started an untitled draft for AI editing."
+        : "Started an untitled draft. Your first category is ready to edit.");
+      return true;
+    }
+
+    let aiEditInFlight = false;
+    let aiEditAccountAvailable = null;
+    async function requestAiWorkflowEdit() {
+      const instructionEl = document.getElementById("aiEditInstruction");
+      const applyButton = document.getElementById("applyAiEdit");
+      if (aiEditInFlight) return;
+      const instruction = String(instructionEl?.value || "").trim();
+      if (!instruction) {
+        setAiEditStatus("Describe the change you want first.", true);
+        instructionEl?.focus();
+        return;
+      }
+      if (aiEditAccountAvailable === false) {
+        setAiEditStatus("Sign in with an account to use Claude AI Edit.", true);
+        requestAuth("login");
+        return;
+      }
+      beginUntitledDraft("ai");
+
+      aiEditInFlight = true;
+      applyButton.disabled = true;
+      applyButton.textContent = "Applying…";
+      setAiEditStatus("Claude is reviewing the workflow and mapping your requested changes…");
+      try {
+        let result;
+        const gateway = aiDataGateway();
+        if (gateway && typeof gateway.aiEditWorkflow === "function") {
+          result = await gateway.aiEditWorkflow(cloneData(currentData), instruction);
+        } else {
+          const response = await fetch("/api/ai/workflow-edit", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workflow: cloneData(currentData), instruction })
+          });
+          let responseBody = null;
+          try { responseBody = await response.json(); } catch {}
+          if (!response.ok) throw new Error(responseBody?.error || `AI edit failed (HTTP ${response.status}).`);
+          result = responseBody;
+        }
+
+        const candidate = result?.workflow || result?.data?.workflow || result?.data || result;
+        applyAiWorkflowResult(candidate,
+          "AI changes applied. Use Undo AI edit or the editor Undo button to restore the previous version.");
+        aiEditHistoryLoaded = false;
+      } catch (error) {
+        setAiEditStatus(error?.message || "The AI edit could not be applied.", true);
+      } finally {
+        aiEditInFlight = false;
+        applyButton.disabled = false;
+        applyButton.textContent = "Apply with AI";
+      }
     }
 
     function setEditMode(enabled) {
@@ -4738,6 +5382,10 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       if (selected.type) return;
       details.innerHTML = `
         <h3>Edit Process</h3>
+        <div class="editorActionDock" role="toolbar" aria-label="Process actions">
+          <div class="editorActionDockCopy"><strong>Process actions</strong><span>Save without leaving your current position.</span></div>
+          <div class="editorActionDockButtons"><button class="primary" type="submit" form="processForm">Save Process</button></div>
+        </div>
         <form class="editForm" id="processForm">
           <label>Name <input name="name" value="${esc(data.process.name)}"></label>
           <label>Description <textarea class="grow" name="description">${esc(data.process.description || "")}</textarea></label>
@@ -4746,11 +5394,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
             <label>Owner team <input name="owner_team" value="${esc(data.process.owner_team || "")}"></label>
           </div>
           <label>Naming convention <textarea class="grow" name="naming_convention">${esc(data.process.naming_convention || "")}</textarea></label>
-          <div class="buttonRow">
-            <button class="primary" type="submit">Save Process</button>
-          </div>
         </form>
       `;
+      details.scrollTop = 0;
       document.getElementById("processForm").addEventListener("submit", event => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -4777,6 +5423,13 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
           <div>Owner</div><div>${esc(stage.owner_role || "")}</div>
           <div>Boxes</div><div>${states.length}</div>
         </div>
+        <div class="editorActionDock" role="toolbar" aria-label="Category actions">
+          <div class="editorActionDockCopy"><strong>Category actions</strong><span>Save or remove this category from anywhere in the panel.</span></div>
+          <div class="editorActionDockButtons">
+            <button class="primary" type="submit" form="stageForm">Save Category</button>
+            <button type="button" id="deleteStage" class="danger">Delete Category</button>
+          </div>
+        </div>
         <h3>Edit Category</h3>
         <form class="editForm" id="stageForm">
           <label>Category name <input name="name" value="${esc(stage.name)}"></label>
@@ -4787,12 +5440,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
           <label>Owner role <input name="owner_role" value="${esc(stage.owner_role || "")}"></label>
           <label>Color <input name="visual_color" type="color" value="${esc(stage.visual_color || "#64748b")}"></label>
           <label>Description <textarea name="description">${esc(stage.description || "")}</textarea></label>
-          <div class="buttonRow">
-            <button class="primary" type="submit">Save Category</button>
-            <button type="button" id="deleteStage" class="danger">Delete Category</button>
-          </div>
         </form>
       `;
+      details.scrollTop = 0;
       document.getElementById("stageForm").addEventListener("submit", event => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -4860,6 +5510,14 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
           <span class="pill">${esc(state.state_key)}</span>
           <span class="pill">${esc(state.state_type)}</span>
           <span class="pill">${esc(state.stage_name || state.stage_key)}</span>
+        </div>
+        <div class="editorActionDock" role="toolbar" aria-label="Box actions">
+          <div class="editorActionDockCopy"><strong>Box actions</strong><span>Update, duplicate, or delete without scrolling to the end.</span></div>
+          <div class="editorActionDockButtons">
+            <button class="primary" type="submit" id="updateBox" form="stateForm">Update</button>
+            <button type="button" id="duplicateState">Duplicate</button>
+            <button type="button" id="deleteState" class="danger">Delete Box</button>
+          </div>
         </div>
         <div class="kv">
           <div>Owner</div><div>${esc(state.owner_role || "")}</div>
@@ -4947,13 +5605,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
             ${currentData.states.filter(other => other.state_key !== state.state_key).map(other => `<label><input type="checkbox" class="depCheck" value="${esc(other.state_key)}" ${(Array.isArray(state.depends_on) && state.depends_on.indexOf(other.state_key) >= 0) ? "checked" : ""}> ${esc(other.name)} <span class="muted">(${esc(other.state_key)})</span></label>`).join("") || "<span class='depEmpty'>Add another box first to set a dependency.</span>"}
           </div>
 
-          <div class="buttonRow">
-            <button class="primary" type="submit" id="updateBox">Update</button>
-            <button type="button" id="duplicateState">Duplicate</button>
-            <button type="button" id="deleteState" class="danger">Delete Box</button>
-          </div>
         </form>
       `;
+      details.scrollTop = 0;
       document.getElementById("stateForm").addEventListener("submit", event => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -5119,6 +5773,13 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
           <div>Guard</div><div>${esc(transition.guard_condition || "")}</div>
           <div>Action</div><div>${esc(transition.action || "")}</div>
         </div>
+        <div class="editorActionDock" role="toolbar" aria-label="Connection actions">
+          <div class="editorActionDockCopy"><strong>Connection actions</strong><span>Save or remove this connection from anywhere in the panel.</span></div>
+          <div class="editorActionDockButtons">
+            <button class="primary" type="submit" form="transitionForm">Save Connection</button>
+            <button type="button" id="deleteTransition" class="danger">Delete Connection</button>
+          </div>
+        </div>
         <h3>Edit Connection</h3>
         <form class="editForm" id="transitionForm">
           <div class="formGrid">
@@ -5134,12 +5795,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
           <label>Guard condition <input name="guard_condition" value="${esc(transition.guard_condition || "")}"></label>
           <label>Action <input name="action" value="${esc(transition.action || "")}"></label>
           <label>Description <textarea name="description">${esc(transition.description || "")}</textarea></label>
-          <div class="buttonRow">
-            <button class="primary" type="submit">Save Connection</button>
-            <button type="button" id="deleteTransition" class="danger">Delete Connection</button>
-          </div>
         </form>
       `;
+      details.scrollTop = 0;
       document.getElementById("transitionForm").addEventListener("submit", event => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -5512,6 +6170,13 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     }
 
     function addStage() {
+      if (beginUntitledDraft("category")) {
+        const stage = currentData.stages[0];
+        selected = { type: "stage", key: stage.stage_key };
+        render(currentData);
+        showStage(stage);
+        return;
+      }
       const key = uniqueKey("stage_", currentData.stages.map(stage => stage.stage_key));
       const model = layout(currentData);
       const lastPanelRight = currentData.stages.length
@@ -5535,6 +6200,7 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     }
 
     function addState() {
+      beginUntitledDraft("box");
       const stage = selectedStageForNewBox();
       const placement = nextFreeBoxPosition(stage);
       const keyPrefix = currentData.process.process_key === "atm_session" ? "A" : currentData.process.process_key === "rideshare_trip" ? "R" : currentData.process.process_key === "hospital_er" ? "E" : "S";
@@ -5668,6 +6334,7 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     function exportJson() {
       if (!currentData) {
         setStatus("Load or create a process before exporting JSON.", true);
+        setJsonFileStatus("Create or open a workflow before saving JSON.", true);
         return;
       }
       const data = JSON.stringify(currentData, null, 2);
@@ -5681,10 +6348,18 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       a.remove();
       URL.revokeObjectURL(url);
       setStatus("Exported current process as JSON.");
+      setJsonFileStatus(`Saved ${currentData.process.name || "workflow"} as JSON.`);
     }
 
     function importJson() {
       document.getElementById("importJsonFile").click();
+    }
+
+    function setJsonFileStatus(message, isError = false) {
+      const output = document.getElementById("jsonFileStatus");
+      if (!output) return;
+      output.textContent = message || "";
+      output.className = isError ? "jsonFileStatus error" : "jsonFileStatus";
     }
 
     function normalizeImportedJson(raw) {
@@ -5774,9 +6449,7 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       return imported;
     }
 
-    async function handleJsonImport(event) {
-      const file = event.target.files?.[0];
-      event.target.value = "";
+    async function loadJsonFile(file) {
       if (!file) return;
       try {
         const text = await file.text();
@@ -5794,9 +6467,18 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
         syncCurrentProcessOption(true);
         recenterSoon(false);
         setStatus(`Imported "${currentData.process.name}" from ${file.name}.`);
+        setJsonFileStatus(`Imported ${file.name}. The workflow is ready to edit.`);
       } catch (error) {
         setStatus(`Could not import JSON: ${error.message}`, true);
+        setJsonFileStatus(`Could not import JSON: ${error.message}`, true);
+        window.alert(`Could not import JSON: ${error.message}`);
       }
+    }
+
+    async function handleJsonImport(event) {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      await loadJsonFile(file);
     }
 
     function collectSvgCssText() {
@@ -6131,11 +6813,20 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       } catch (e) {}
       setStatus("Open the full Plumbline app to sign in \u2014 the editor alone has no account store.", true);
     }
-    function setEditorUser(label) {
+    function setEditorUser(label, guest = false) {
       const badge = document.getElementById("editorUserBadge");
       if (!badge) return;
       if (label) { badge.textContent = label; badge.classList.add("signedIn"); }
       else { badge.textContent = "not signed in"; badge.classList.remove("signedIn"); }
+      aiEditAccountAvailable = Boolean(label && !guest);
+      aiEditHistoryGeneration += 1;
+      aiEditHistoryLoaded = false;
+      aiEditHistoryLoading = false;
+      const historyList = document.getElementById("aiEditHistoryList");
+      if (historyList) historyList.innerHTML = '<div class="aiHistoryEmpty">Open this tab to retrieve your prior AI edits.</div>';
+      if (!aiEditAccountAvailable) {
+        setAiEditStatus("Sign in with an account to use Claude AI Edit. Manual editing remains available.");
+      }
     }
     const loginBtnEl = document.getElementById("btnLogin");
     const signupBtnEl = document.getElementById("btnSignup");
@@ -6144,16 +6835,46 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     window.addEventListener("message", authEvent => {
       const d = authEvent.data;
       if (d && d.type === "plumbline-auth-state") {
-        setEditorUser(d.user || "");
+        setEditorUser(d.user || "", Boolean(d.guest));
         document.documentElement.setAttribute("data-theme", d.darkMode ? "dark" : "light");
       }
     });
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "plumbline-editor-ready" }, "*");
+      }
+    } catch {}
 
     document.getElementById("undoEdit").addEventListener("click", undoLastEdit);
     document.getElementById("redoEdit").addEventListener("click", redoLastEdit);
+    document.getElementById("openAiEdit").addEventListener("click", openAiEditDialog);
+    document.getElementById("aiEditClose").addEventListener("click", closeAiEditDialog);
+    aiEditOverlay.addEventListener("click", event => { if (event.target === aiEditOverlay) closeAiEditDialog(); });
+    document.getElementById("aiEditRequestTab").addEventListener("click", () => setAiEditTab("request"));
+    document.getElementById("aiEditHistoryTab").addEventListener("click", () => setAiEditTab("history"));
+    document.querySelector(".aiEditTabs").addEventListener("keydown", event => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      setAiEditTab(document.getElementById("aiEditHistoryPane").hidden ? "history" : "request", true);
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key === "Escape" && !aiEditOverlay.hidden) {
+        event.preventDefault();
+        closeAiEditDialog();
+      }
+    });
+    document.getElementById("aiUndoEdit").addEventListener("click", undoLastEdit);
+    document.getElementById("applyAiEdit").addEventListener("click", requestAiWorkflowEdit);
+    document.getElementById("aiEditInstruction").addEventListener("keydown", event => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        requestAiWorkflowEdit();
+      }
+    });
     document.getElementById("toggleEditMode").addEventListener("click", () => setEditMode(!isEditMode));
     document.getElementById("toggleConnectMode").addEventListener("click", () => setConnectMode(!connectMode));
     document.addEventListener("keydown", event => {
+      if (event.defaultPrevented) return;
       const key = event.key.toLowerCase();
       const isTextField = event.target instanceof Element && event.target.closest("input, textarea, select");
       if (isTextField) return;
@@ -6195,6 +6916,51 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
       setStatus("Saved workflows are only available inside Plumbline Studio.");
     });
 
+    function setInspectorTab(tabName, focus = false) {
+      const propertiesTab = document.getElementById("inspectorTabProperties");
+      const jsonTab = document.getElementById("inspectorTabJson");
+      const jsonTools = document.getElementById("jsonTools");
+      const showJson = tabName === "json";
+      propertiesTab.setAttribute("aria-selected", String(!showJson));
+      jsonTab.setAttribute("aria-selected", String(showJson));
+      propertiesTab.tabIndex = showJson ? -1 : 0;
+      jsonTab.tabIndex = showJson ? 0 : -1;
+      details.hidden = showJson;
+      jsonTools.hidden = !showJson;
+      if (focus) (showJson ? jsonTab : propertiesTab).focus();
+    }
+
+    document.getElementById("inspectorTabProperties").addEventListener("click", () => setInspectorTab("properties"));
+    document.getElementById("inspectorTabJson").addEventListener("click", () => setInspectorTab("json"));
+    document.querySelector(".inspectorTabs").addEventListener("keydown", event => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      setInspectorTab(document.getElementById("jsonTools").hidden ? "json" : "properties", true);
+    });
+
+    document.getElementById("importJson").addEventListener("click", importJson);
+    document.getElementById("exportJson").addEventListener("click", exportJson);
+    document.getElementById("importJsonFile").addEventListener("change", handleJsonImport);
+    const jsonDropZone = document.getElementById("jsonDropZone");
+    ["dragenter", "dragover"].forEach(type => jsonDropZone.addEventListener(type, event => {
+      event.preventDefault();
+      jsonDropZone.classList.add("dragOver");
+    }));
+    ["dragleave", "drop"].forEach(type => jsonDropZone.addEventListener(type, event => {
+      event.preventDefault();
+      jsonDropZone.classList.remove("dragOver");
+    }));
+    jsonDropZone.addEventListener("drop", event => {
+      const file = event.dataTransfer?.files?.[0];
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith(".json") && file.type !== "application/json") {
+        window.alert("Choose a .json workflow file.");
+        return;
+      }
+      loadJsonFile(file);
+    });
+    setInspectorTab("properties");
+
     document.getElementById("addStage").addEventListener("click", addStage);
     document.getElementById("addState").addEventListener("click", addState);
     document.getElementById("addTransition").addEventListener("click", addTransition);
@@ -6231,8 +6997,9 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
 
 
 
-    // Variant B inspector workflow: stage form changes until Accept Pending is clicked.
-    const INSPECTOR_VARIANT_B = true;
+    // Direct-save inspector workflow. The contextual action dock stays visible,
+    // so requiring a second "Accept Pending" click only adds friction.
+    const INSPECTOR_VARIANT_B = false;
     let inspectorPending = null;
     let bypassInspectorIntercept = false;
 
@@ -6365,7 +7132,6 @@ create policy "fsm_cost_items_public_delete" on fsm_cost_items for delete using 
     initializeSideToggle();
     enableBackgroundPan();
     resetDefaultViewToggles();
-    loadExample("ecommerce_order");
     loadCloudSettings();
   </script>
 </body>

@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/index.js",
     "migrate": "node src/migrate.js",
-    "verify-db": "node scripts/verify-db.js"
+    "verify-db": "node scripts/verify-db.js",
+    "test": "node --test --test-isolation=none test/*.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",

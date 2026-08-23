@@ -22,12 +22,13 @@ __PL.define("studio/router.ts", function (require, exports, module) {
 Object.defineProperty(exports, "__esModule", { value: true });
 
 var ROUTES = [
-  { re: /^\/?$|^\/home$/,   mod: "studio/modules/home.ts",     path: "/home" },
-  { re: /^\/editor$/,       mod: "studio/modules/editor.ts",   path: "/editor" },
-  { re: /^\/analysis$/,     mod: "studio/modules/analysis.ts", path: "/analysis" }
+  { re: /^\/?$|^\/home$/,   mod: "studio/modules/home.ts",     path: "/home", pageId: "homePage" },
+  { re: /^\/editor$/,       mod: "studio/modules/editor.ts",   path: "/editor", pageId: "editorPage" },
+  { re: /^\/analysis$/,     mod: "studio/modules/analysis.ts", path: "/analysis", pageId: "studioPage" },
+  { re: /^\/maintenance$/,  mod: "studio/modules/maintenance.ts", path: "/maintenance", pageId: "maintenancePage", superuser: true }
 ];
 
-var current = null;   /* { instance: object, name: string } */
+var current = null;   /* { instance: object, name: string, pageId: string } */
 var token   = 0;      /* monotonic navigation ticket */
 var ctx     = null;
 var started = false;
@@ -54,6 +55,15 @@ function markNav(path) {
   }
 }
 
+/* The page markup is persistent, so a stale `active` class can survive a
+   direct deep-link, a restored browser page, or an interrupted unmount. Keep
+   the invariant at router level: exactly the matched screen is visible. */
+function showOnlyPage(pageId) {
+  var pages = document.querySelectorAll(".plPage");
+  for (var i = 0; i < pages.length; i++)
+    pages[i].classList.toggle("active", pages[i].id === pageId);
+}
+
 function match(path) {
   for (var i = 0; i < ROUTES.length; i++)
     if (ROUTES[i].re.test(path)) return ROUTES[i];
@@ -71,6 +81,13 @@ function navigate(path) {
     if (currentPath() !== "/home")
       history.replaceState(null, "", "#/home");
   }
+  if (hit.superuser && ctx && ctx.auth && !ctx.auth.isSuperuser()) {
+    hit = ROUTES[0];
+    if (currentPath() !== "/home")
+      history.replaceState(null, "", "#/home");
+  }
+
+  showOnlyPage(hit.pageId);
 
   /* Already showing this module: re-mark the nav and stop. Without this,
      clicking the active nav link would unmount and remount for no reason,
@@ -104,7 +121,7 @@ function navigate(path) {
           console.error("router: unmount of superseded module failed", e);
         });
       }
-      current = { instance: instance, name: hit.mod };
+      current = { instance: instance, name: hit.mod, pageId: hit.pageId };
       markNav(hit.path);
     });
   })["catch"](function (e) {
@@ -136,6 +153,14 @@ exports.start = function (baseCtx) {
   });
 
   window.addEventListener("hashchange", function () { navigate(currentPath()); });
+  window.addEventListener("pageshow", function () {
+    var hit = match(currentPath());
+    showOnlyPage((current && current.pageId) || hit.pageId);
+  });
+  window.addEventListener("resize", function () {
+    var hit = match(currentPath());
+    showOnlyPage((current && current.pageId) || hit.pageId);
+  });
   return navigate(currentPath());
 };
 

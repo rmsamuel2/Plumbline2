@@ -47,9 +47,10 @@ into PowerShell — double quotes silently expand `$word`.
 powershell -ExecutionPolicy Bypass -File .\setup-plumbline.ps1
 ```
 
-It checks prerequisites and the filesystem, runs `npm install`, applies
-migrations 001–003 (idempotent), builds `dist\Plumbline_Studio_V2.html`, starts
-the API on port 8080 in its own window, and opens the app.
+It checks prerequisites and the filesystem, runs `npm install`, applies every
+database migration through 006 (idempotent), builds
+`dist\Plumbline_Studio_V2.html`, starts the API on port 8080 in its own window,
+and opens `http://localhost:8080/#/home`.
 
 Seeded logins are `rob / password` and `max / password`. **Change both
 immediately** — Account → Change password, which revokes old sessions and
@@ -67,14 +68,10 @@ writes an audit row.
 
 ## Adding a user
 
-Use the signup endpoint. It goes through the same `bcrypt.hash(pw, 10)` path
-the login handler verifies against:
-
-```powershell
-Invoke-RestMethod -Uri http://localhost:8080/api/signup -Method Post `
-  -ContentType application/json `
-  -Body '{"username":"someone","password":"...","displayName":"Someone"}'
-```
+Sign in with a superuser account, then choose **Create account** in the top
+navigation. Anonymous signup is disabled; the API enforces the same
+superuser-only rule even if a client attempts to call it directly. Passwords
+are hashed through the same `bcrypt.hash(pw, 10)` path used by authentication.
 
 Then promote if needed:
 

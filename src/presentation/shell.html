@@ -10,24 +10,24 @@
     <a href="#/home" data-route>Home</a>
     <a href="#/editor" data-route data-protected-nav hidden>Editor</a>
     <a href="#/analysis" data-route data-protected-nav hidden>Analysis</a>
+    <a href="#/maintenance" data-route data-superuser-only hidden>Maintenance</a>
+    <button class="btn navAuth navCreate" type="button" data-auth-mode="signup" data-superuser-only hidden>Create account</button>
     <button class="btn ghost navSettings" type="button" data-settings>Settings</button>
     <button class="btn ghost navAuth" type="button" data-auth-mode="login" data-anonymous-only>Sign in</button>
-    <button class="btn navAuth navCreate" type="button" data-auth-mode="signup" data-anonymous-only>Create account</button>
     <button class="btn ghost navSignOut" type="button" data-signout data-signed-in-only hidden>Sign out</button>
     <span class="userbadge navUserBadge" data-session-badge hidden>not signed in</span>
   </nav>
   <main id="outlet">
-  <section id="homePage" class="plPage active" aria-label="Plumbline home">
+  <section id="homePage" class="plPage" aria-label="Plumbline home">
     <div class="homeShell">
       <section class="homeHero">
         <div class="homeCard homeHeroContent">
           <div id="homeGate">
             <div class="homeEyebrow">Workflow intelligence, grounded in proof</div>
             <h1>See the work clearly.<br><span>Improve it confidently.</span></h1>
-            <p class="homeLead">Plumbline turns complex processes into workflows you can map, measure, and strengthen. Start with an account to keep your work, or explore immediately as a guest.</p>
+            <p class="homeLead">Plumbline turns complex processes into workflows you can map, measure, and strengthen. Sign in to continue your work, or explore immediately as a guest.</p>
             <div class="homeActions">
               <button class="btn big" id="homeLogin">Sign in</button>
-              <button class="btn dark" id="homeSignup">Create account</button>
               <button class="btn ghost homeGuestBtn" id="homeGuest">Continue as guest</button>
             </div>
             <div class="homePromise"><span>Map</span><i></i><span>Measure</span><i></i><span>Improve</span></div>
@@ -61,7 +61,7 @@
   </section>
   <section id="studioPage" class="plPage" aria-label="Plumbline Studio page">
   <div id="err" style="display:none;background:#B2453C;color:#fff;padding:8px 14px;font:13px monospace"></div>
-  <header class="analysisStudioHeader"><div class="analysisTitleBlock"><div class="analysisTitle">Analysis Studio</div><div class="sub">Current editor workflow and combined Σ value</div></div><div id="analysisHudDock" class="hudDock"></div></header>
+  <header class="analysisStudioHeader"><div class="analysisTitleBlock"><div class="analysisTitle">Analysis Studio</div><details class="featureInfo"><summary aria-label="About Analysis Studio" title="About Analysis Studio">i</summary><div class="featureInfoCard"><strong>Analysis Studio</strong><span>Open a workflow to inspect its structure, cost, and timing, apply the six improvement checks, and review certified or refuted findings.</span></div></details><div class="sub">Current editor workflow and combined Σ value</div></div><div id="maintenanceEditBanner" class="maintenanceEditBanner" hidden></div><div id="analysisHudDock" class="hudDock"></div></header>
   <div class="topbar analysisToolbar">
     <div id="wfbar"></div>
     <div class="analysisToolbarActions">
@@ -75,7 +75,7 @@
       </div>
       <div class="analysisToolbarGroup analysisToolbarGroupPrimary" aria-label="Save and analysis controls">
         <button class="btn" id="btnSaveStudio">Save</button>
-        <button class="btn ghost" id="btnExploreSavedStudio">Explore Saved</button>
+        <button class="btn ghost" id="btnExploreSavedStudio">Explorer</button>
         <button class="btn ghost" id="btnDownload">Download</button>
         <button class="btn primary" id="btnAll">Apply all improvements</button>
       </div>
@@ -103,6 +103,42 @@
       <div class="pane" id="pane_analysis"><iframe id="results" title="Analysis" scrolling="no"></iframe></div>
     </section>
   </div>
+  </section>
+  <section id="maintenancePage" class="plPage" aria-label="Superuser maintenance">
+    <header class="maintenanceHeader">
+      <div><div class="maintenanceEyebrow">Superuser access</div><h1>Maintenance</h1><p>Account operations, database health, and security audit history.</p></div>
+      <div class="maintenanceHeaderActions"><span class="maintenanceSecureBadge">Audited controls</span><button class="btn ghost" id="maintenanceRefresh" type="button">Refresh data</button></div>
+    </header>
+    <div class="maintenanceBody">
+      <div id="maintenanceStatus" class="maintenanceStatus" role="status">Loading maintenance data…</div>
+      <section class="maintenanceMetrics" aria-label="System overview">
+        <article><span>Total users</span><strong id="maintenanceTotalUsers">—</strong><small id="maintenanceActiveUsers">— active</small></article>
+        <article><span>Active sessions</span><strong id="maintenanceActiveSessions">—</strong><small>Current, non-revoked sessions</small></article>
+        <article><span>Workflows</span><strong id="maintenanceWorkflows">—</strong><small id="maintenanceVersions">— stored versions</small></article>
+        <article><span>Analysis runs</span><strong id="maintenanceAnalyses">—</strong><small id="maintenanceAuditCount">— audit events</small></article>
+        <article><span>Database</span><strong id="maintenanceDatabaseSize">—</strong><small id="maintenanceDatabaseName">Checking…</small></article>
+      </section>
+      <nav class="maintenanceTabs" aria-label="Maintenance sections">
+        <button type="button" data-maintenance-tab="users" class="on">Users</button>
+        <button type="button" data-maintenance-tab="audit">Audit log</button>
+        <button type="button" data-maintenance-tab="database">Database</button>
+      </nav>
+      <section class="maintenancePanel" data-maintenance-panel="users">
+        <div class="maintenancePanelHead"><div><h2>User management</h2><p>Passwords are never displayed. Every administrative change is recorded.</p></div><label class="maintenanceSearch">Search users<input id="maintenanceUserSearch" type="search" placeholder="Name, username, email, team…"></label></div>
+        <div class="maintenanceTableWrap"><table class="maintenanceTable maintenanceUsersTable"><colgroup><col class="maintenanceUserColumn"><col class="maintenanceAccessColumn"><col class="maintenanceActivityColumn"><col class="maintenanceStatusColumn"><col class="maintenanceControlsColumn"></colgroup><thead><tr><th>User</th><th>Access</th><th>Activity</th><th>Status</th><th>Controls</th></tr></thead><tbody id="maintenanceUsersBody"></tbody></table></div>
+      </section>
+      <section class="maintenancePanel" data-maintenance-panel="audit" hidden>
+        <div class="maintenancePanelHead"><div><h2>Security audit log</h2><p>Append-only administrative and security events from the database.</p></div><button class="btn ghost" id="maintenanceAuditRefresh" type="button">Refresh log</button></div>
+        <div class="maintenanceTableWrap"><table class="maintenanceTable auditTable"><thead><tr><th>Time</th><th>Action</th><th>Actor</th><th>Target</th><th>Details</th></tr></thead><tbody id="maintenanceAuditBody"></tbody></table></div>
+      </section>
+      <section class="maintenancePanel" data-maintenance-panel="database" hidden>
+        <div class="maintenanceDatabaseGrid">
+          <article class="maintenanceDatabaseCard"><div class="maintenanceCardIcon">DB</div><div><h2>Supabase PostgreSQL</h2><p id="maintenanceDatabaseDetail">Checking database connection…</p><dl><div><dt>Schema</dt><dd>001-005</dd></div><div><dt>Active superusers</dt><dd id="maintenanceSuperusers">—</dd></div><div><dt>Last checked</dt><dd id="maintenanceCheckedAt">—</dd></div></dl></div></article>
+          <article class="maintenanceDatabaseCard maintenanceCleanupCard"><div class="maintenanceCardIcon amber">SEC</div><div><h2>Authentication cleanup</h2><p>Remove expired remember tokens and old expired or revoked sessions. Recent security history remains available.</p><label>Retain session history for <input id="maintenanceRetainDays" type="number" min="1" max="365" value="30"> days</label><button class="btn ghost" id="maintenancePurge" type="button">Purge expired authentication data</button></div></article>
+        </div>
+      </section>
+    </div>
+  </section>
     <script>
     /* Plumbline is database-backed. Point the app at the Plumbline API
        (server/ -> PostgreSQL/Supabase). Same-origin by default; set an
@@ -136,22 +172,79 @@
   <script>@@MODULE_EDITOR_JS@@</script>
   <script>@@MODULE_ANALYSIS_JS@@</script>
   <script>@@MODULE_HOME_JS@@</script>
+  <script>@@MODULE_MAINTENANCE_JS@@</script>
   <script>@@ROUTER_JS@@</script>
   <script>@@UI_BOOT_JS@@</script>
-
-  </section>
   </main>
   <div id="libraryOverlay" class="libOverlay" style="display:none">
     <aside id="librarySidebar" class="libPanel" role="dialog" aria-label="Workflow library">
       <div class="libHead">
-        <span class="libTitle">Workflows</span>
-        <button class="btn ghost" id="libNewFolder" title="Create a folder">New folder</button>
-        <button class="btn ghost" id="libClose" aria-label="Close">&times;</button>
+        <div class="libTitleBlock">
+          <span class="libEyebrow">Plumbline workspace</span>
+          <span class="libTitle">Explorer</span>
+        </div>
+        <div class="libHeadActions">
+          <button class="btn ghost libExampleAction" id="libRemoveExamples" title="Remove every editable example" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7"></path></svg>
+            <span>Remove examples</span>
+          </button>
+          <button class="btn ghost libExampleAction" id="libUndoExamples" title="Restore the last set of removed examples" type="button" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 8 4 12l5 4"></path><path d="M5 12h8a6 6 0 0 1 6 6"></path></svg>
+            <span>Undo remove</span>
+          </button>
+          <button class="btn ghost libNewFolder" id="libNewFolder" title="Create a folder (Ctrl+Shift+N)" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10h-17z"></path><path d="M12 11v5m-2.5-2.5h5"></path></svg>
+            <span>New folder</span>
+          </button>
+          <button class="libWindowClose" id="libClose" type="button" aria-label="Close Explorer" title="Close Explorer">&times;</button>
+        </div>
       </div>
-      <input id="libSearch" type="text" placeholder="Find a workflow or folder" autocomplete="off">
-      <div id="libTree" class="libTree"></div>
+      <div class="libCommandBar">
+        <div class="libAddress" aria-label="Current Explorer location">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10h-17z"></path></svg>
+          <span>Plumbline</span><b aria-hidden="true">›</b><strong>Workflows</strong>
+        </div>
+        <label class="libSearchBox" for="libSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>
+          <input id="libSearch" type="search" placeholder="Search workflows and folders" autocomplete="off">
+        </label>
+      </div>
+
+      <div class="libBrowser">
+        <nav class="libPlaces" aria-label="Explorer locations">
+          <div class="libPlacesTitle">Locations</div>
+          <button id="libPlaceWorkflows" class="libPlace on" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10h-17z"></path></svg>
+            <span>My workflows</span><small id="libMineCount">0</small>
+          </button>
+          <button id="libPlaceExamples" class="libPlace" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h8l4 4v13H7z"></path><path d="M15 3.5v4h4M10 12h6m-6 4h6"></path></svg>
+            <span>Examples</span><small id="libExampleCount">0</small>
+          </button>
+          <div class="libSelectionHint"><kbd>Shift</kbd>-click selects a range.</div>
+        </nav>
+        <section class="libContents" aria-label="Workflow files">
+          <div class="libColumns" aria-hidden="true"><span>Name</span><span>Version</span><span>Actions</span></div>
+          <div id="libTree" class="libTree" role="tree" aria-label="Workflow and folder list"></div>
+        </section>
+      </div>
 
       <div class="libFoot">
+        <div id="libBatch" class="libBatch" hidden>
+          <div class="libBatchSummary">
+            <strong id="libBatchCount">0 workflows selected</strong>
+            <button class="btn ghost" id="libBatchClear" type="button">Clear</button>
+          </div>
+          <div class="libBatchMoveRow">
+            <select id="libBatchTarget" aria-label="Move selected workflows to folder"></select>
+            <button class="btn ghost" id="libBatchMove" type="button">Move</button>
+          </div>
+          <div class="libBatchActions">
+            <button class="btn primary" id="libBatchOpen" type="button">Open selected</button>
+            <button class="btn ghost" id="libBatchDuplicate" type="button">Duplicate</button>
+            <button class="btn danger" id="libBatchDelete" type="button">Delete</button>
+          </div>
+        </div>
         <button class="btn primary" id="libOpen">Open</button>
       </div>
       <div id="libStatus" class="libStatus"></div>
@@ -179,6 +272,48 @@
             <button class="btn" id="libEditSave" type="button">Save properties</button>
           </div>
         </div>
+      </div>
+      <div id="libContextMenu" class="libContextMenu" role="menu" aria-label="Explorer actions" hidden></div>
+    </aside>
+  </div>
+  <div id="aiReportOverlay" class="libOverlay" style="display:none">
+    <aside class="libPanel aiReportExplorer" role="dialog" aria-modal="true" aria-labelledby="aiReportExplorerTitle">
+      <div class="libHead">
+        <div class="libTitleBlock">
+          <span class="libEyebrow">Account history</span>
+          <span class="libTitle" id="aiReportExplorerTitle">Previous AI analyses</span>
+        </div>
+        <button class="libWindowClose" id="aiReportClose" type="button" aria-label="Close previous AI analyses" title="Close">&times;</button>
+      </div>
+      <div class="libCommandBar">
+        <div class="libAddress" aria-label="Current AI report location">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h8l4 4v13H7z"></path><path d="M15 3.5v4h4M10 12h6m-6 4h6"></path></svg>
+          <span>Plumbline</span><b aria-hidden="true">›</b><strong id="aiReportLocation">All analyses</strong>
+        </div>
+        <label class="libSearchBox" for="aiReportSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>
+          <input id="aiReportSearch" type="search" placeholder="Search analyses and workflows" autocomplete="off">
+        </label>
+      </div>
+      <div class="libBrowser">
+        <nav class="libPlaces aiReportPlaces" aria-label="AI analysis locations">
+          <div class="libPlacesTitle">Locations</div>
+          <button id="aiReportAll" class="libPlace on" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h8l4 4v13H7z"></path><path d="M15 3.5v4h4M10 12h6m-6 4h6"></path></svg>
+            <span>All analyses</span><small id="aiReportCount">0</small>
+          </button>
+          <div class="libPlacesTitle aiReportWorkflowTitle">Workflows</div>
+          <div id="aiReportWorkflowPlaces"></div>
+          <div class="libSelectionHint">Reports keep their workflow snapshots even after the live workflow changes or is deleted.</div>
+        </nav>
+        <section class="libContents" aria-label="Saved AI analysis reports">
+          <div class="libColumns aiReportColumns" aria-hidden="true"><span>Name</span><span>Created</span><span>Actions</span></div>
+          <div id="aiReportTree" class="libTree aiReportTree" role="listbox" aria-label="Previous AI analyses"></div>
+        </section>
+      </div>
+      <div class="libFoot aiReportFoot">
+        <div id="aiReportStatus" class="libStatus" role="status"></div>
+        <button class="btn primary" id="aiReportOpen" type="button" disabled>Open report</button>
       </div>
     </aside>
   </div>
@@ -238,9 +373,7 @@
           </div>
           <div class="authactions">
             <button class="btn" id="btnSignIn">Sign in</button>
-            <label class="authremember"><input type="checkbox" id="authRemember" checked> Keep me signed in</label>
           </div>
-          <p class="authSwitch">New to Plumbline? <button type="button" data-auth-mode="signup">Create an account</button></p>
         </section>
         <section class="authPanel" data-auth-panel="signup">
           <h3>Create an account</h3>
@@ -296,6 +429,56 @@
           </div>
           <div class="authactions"><button class="btn ghost" id="btnChangePw">Change password</button></div>
         </section>
+      </div>
+    </div>
+  </div>
+  <div id="maintenanceActionModal" class="modal" style="display:none">
+    <div class="modalbox maintenanceActionBox" role="dialog" aria-modal="true" aria-labelledby="maintenanceActionTitle">
+      <button class="modalclose" id="maintenanceActionClose" type="button" aria-label="Close">×</button>
+      <div class="maintenanceEyebrow">Superuser confirmation</div>
+      <h2 id="maintenanceActionTitle">Confirm action</h2>
+      <p id="maintenanceActionMessage"></p>
+      <div id="maintenanceProtectedPassword" class="maintenanceProtectedPassword" hidden><span>Current password</span><strong>••••••••</strong><small>Protected by a one-way hash. It cannot be displayed or recovered.</small></div>
+      <label id="maintenancePasswordField" hidden>New password <span class="optional">minimum 8 characters</span><input id="maintenanceNewPassword" type="password" autocomplete="new-password"></label>
+      <div id="maintenanceActionStatus" class="authstatus" hidden></div>
+      <div class="maintenanceActionButtons"><button class="btn ghost" id="maintenanceActionCancel" type="button">Cancel</button><button class="btn" id="maintenanceActionConfirm" type="button">Confirm</button></div>
+    </div>
+  </div>
+  <div id="maintenanceWorkflowModal" class="modal" style="display:none">
+    <div class="modalbox maintenanceWorkflowBox" role="dialog" aria-modal="true" aria-labelledby="maintenanceWorkflowTitle">
+      <div class="libHead maintenanceExplorerHead">
+        <div class="libTitleBlock">
+          <span class="libEyebrow">Superuser workflow access</span>
+          <span class="libTitle" id="maintenanceWorkflowTitle">User Explorer</span>
+        </div>
+        <button class="libWindowClose" id="maintenanceWorkflowClose" type="button" aria-label="Close user Explorer" title="Close user Explorer">×</button>
+      </div>
+      <div class="libCommandBar maintenanceExplorerCommandBar">
+        <div class="libAddress" aria-label="Current maintenance Explorer location">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10h-17z"></path></svg>
+          <span>Users</span><b aria-hidden="true">›</b><strong id="maintenanceWorkflowBreadcrumb">Workflows</strong>
+        </div>
+        <label class="libSearchBox" for="maintenanceWorkflowSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 5 5"></path></svg>
+          <input id="maintenanceWorkflowSearch" type="search" placeholder="Search this user's workflows and folders" autocomplete="off">
+        </label>
+      </div>
+      <p id="maintenanceWorkflowSubtitle" class="maintenanceExplorerSubtitle">View the current database version or open an audited edit.</p>
+      <div id="maintenanceWorkflowStatus" class="maintenanceStatus" role="status"></div>
+      <div class="maintenanceWorkflowGrid">
+        <section class="maintenanceWorkflowContents" aria-label="User workflow Explorer">
+          <div id="maintenanceWorkflowSelectionBar" class="maintenanceWorkflowSelectionBar" hidden>
+            <strong id="maintenanceWorkflowSelectionCount">0 workflows selected</strong>
+            <div>
+              <button id="maintenanceWorkflowViewSelected" class="btn tiny ghost" type="button">View selected</button>
+              <button id="maintenanceWorkflowEditSelected" class="btn tiny" type="button">Edit selected</button>
+              <button id="maintenanceWorkflowClearSelection" class="btn tiny ghost" type="button">Clear</button>
+            </div>
+          </div>
+          <div class="libColumns maintenanceExplorerColumns" aria-hidden="true"><span>Name</span><span>Version</span><span>Actions</span></div>
+          <div id="maintenanceWorkflowList" class="libTree maintenanceWorkflowList" role="tree" aria-label="User folders and workflows"></div>
+        </section>
+        <section id="maintenanceWorkflowDetail" class="maintenanceWorkflowDetail" aria-label="Workflow view mode"></section>
       </div>
     </div>
   </div>

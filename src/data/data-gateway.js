@@ -32,17 +32,28 @@ window.PlumblineData = (function () {
   async function api(path, opts) {
     opts = opts || {};
     var res;
+    var controller = typeof AbortController === "function" ? new AbortController() : null;
+    var timeoutMs = Number(opts.timeoutMs);
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) timeoutMs = 10000;
+    var timeout = controller ? setTimeout(function () { controller.abort(); }, timeoutMs) : null;
     try {
       res = await fetch(base + path, {
         method: opts.method || "GET",
         credentials: "include",
         headers: opts.body ? { "Content-Type": "application/json" } : undefined,
-        body: opts.body ? JSON.stringify(opts.body) : undefined
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+        signal: controller ? controller.signal : undefined
       });
     } catch (e) {
+      if (e && e.name === "AbortError") {
+        throw new Error("Plumbline account services did not respond within " +
+          Math.round(timeoutMs / 1000) + " seconds. Guest mode remains available.");
+      }
       throw new Error("Plumbline database is unreachable" +
         (base ? " at " + base : "") +
         ". Start the Plumbline API (server/) or set window.PLUMBLINE_API to its URL.");
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
     var data = null;
     try { data = await res.json(); } catch (e) { /* empty body */ }
@@ -172,6 +183,38 @@ window.PlumblineData = (function () {
       return api("/api/v2/versions/" + encodeURIComponent(versionId) + "/analyses");
     },
 
+    /* ---- AI-assisted workflow editing ----------------------------------------- */
+    aiEditWorkflow: function (workflow, instruction) {
+      return api("/api/ai/workflow-edit", {
+        method: "POST",
+        body: { workflow: workflow, instruction: instruction },
+        timeoutMs: 120000
+      });
+    },
+    listAiWorkflowEdits: function (limit) {
+      var safeLimit = Math.max(1, Math.min(100, Number(limit) || 30));
+      return api("/api/ai/workflow-edits?limit=" + encodeURIComponent(safeLimit));
+    },
+    loadAiWorkflowEdit: function (editId) {
+      return api("/api/ai/workflow-edits/" + encodeURIComponent(editId));
+    },
+
+    /* ---- saved AI strategic analysis reports --------------------------------- */
+    saveAiAnalysisReport: function (report) {
+      return api("/api/ai/analysis-reports", {
+        method: "POST", body: report || {}, timeoutMs: 30000
+      });
+    },
+    listAiAnalysisReports: function (limit) {
+      var safeLimit = Math.max(1, Math.min(250, Number(limit) || 100));
+      return api("/api/ai/analysis-reports?limit=" + encodeURIComponent(safeLimit),
+        { timeoutMs: 30000 });
+    },
+    loadAiAnalysisReport: function (reportId) {
+      return api("/api/ai/analysis-reports/" + encodeURIComponent(reportId),
+        { timeoutMs: 30000 });
+    },
+
     /* ---- online history (activity_log) ------------------------------------------ */
     appendHistory: function (a, m) {
       return api("/api/history", { method: "POST", body: { action: a, meta: m } });
@@ -193,6 +236,21 @@ window.PlumblineData = (function () {
         return api("/api/admin/users/" + encodeURIComponent(userId) + "/active",
           { method: "POST", body: { isActive: !!isActive } });
       },
+      setUserType: function (userId, userType) {
+        return api("/api/admin/users/" + encodeURIComponent(userId) + "/type",
+          { method: "POST", body: { userType: userType } });
+      },
+      listUserWorkflows: function (userId) {
+        return api("/api/admin/users/" + encodeURIComponent(userId) + "/workflows");
+      },
+      loadWorkflow: function (workflowId) {
+        return api("/api/admin/workflows/" + encodeURIComponent(workflowId));
+      },
+      saveWorkflowVersion: function (workflowId, data) {
+        return api("/api/admin/workflows/" + encodeURIComponent(workflowId) + "/versions",
+          { method: "POST", body: data || {} });
+      },
+      status: function () { return api("/api/admin/status"); },
       auditLog: function () { return api("/api/admin/audit"); },
       purgeExpiredAuth: function (retainDays) {
         return api("/api/admin/purge-expired-auth",
